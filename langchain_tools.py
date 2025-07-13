@@ -137,7 +137,56 @@ def delete_calendar_event(event_id: str,
     except Exception as e:
         return f"Error deleting event: {str(e)}"
 
+@tool
+def update_calendar_event(event_id: str,
+                          summary: Optional[str],
+                          location: Optional[str],
+                          description: Optional[str],
+                          start_datetime: Optional[str],
+                          end_datetime: Optional[str],
+                          attendees: Optional[List[str]] = None,
+                          calendar_id: str="4332dd8d4199feba063d2bfab712522c230fb3529ebe4e8e23d1554722f18087@group.calendar.google.com") -> str:
+    """
+    Update an event in Google Calendar with new information.
 
+    Args:
+        event_id (str): The ID of the event to update.
+        summary (Optional[str]): Title of the event. Leave as None if the updated is not needed for that field.
+        location (Optional[str]): Location of the event. Leave as None if the updated is not needed for that field.
+        description (Optional[str]): Description of the event. Leave as None if the updated is not needed for that field.
+        start_datetime (Optional[str]): Start date and time in RFC3339 format. Leave as None if the updated is not needed for that field.
+        end_datetime (Optional[str]): End date and time in RFC3339 format. Leave as None if the updated is not needed for that field.
+        attendees (Optional[List[str]]): List of attendee email addresses. Leave as None if the updated is not needed for that field.
+        calendar_id (str): ID of the calendar (default: '4332dd8d4199feba063d2bfab712522c230fb3529ebe4e8e23d1554722f18087@group.calendar.google.com').
+
+    Returns:
+        str: Confirmation message.
+    """
+    service = authenticate_google_calendar()
+    event = {}
+    fields = [("summary", summary), ("location", location), ("description", description)]
+    for field_name, value in fields:
+        if value is not None:
+            event[field_name] = value
+
+    if start_datetime is not None:
+        event["start"] = {"dateTime": start_datetime, "timeZone": "Europe/Samara"}
+    if end_datetime is not None:
+        event["end"] = {"dateTime": end_datetime, "timeZone": "Europe/Samara"}
+    if attendees is not None:
+        event["attendees"] = [{"email": email} for email in attendees]
+
+    try:
+        if not event:
+            return f"No updates provided for event with ID {event_id}"
+        current_event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+        updated_event = {**current_event, **event}
+        service.events().update(calendarId=calendar_id, eventId=event_id, body=updated_event).execute()
+        return f"Event with ID {event_id} successfully updated! You can view it here: {event.get('htmlLink')}"  # TODO: bad link
+    except Exception as e:
+        return f"Error updating event: {str(e)}"
+
+"""
 def main():
     service = authenticate_google_calendar()
 
@@ -166,7 +215,8 @@ def main():
 
     events, ids = list_events(service, calendar_id="4332dd8d4199feba063d2bfab712522c230fb3529ebe4e8e23d1554722f18087@group.calendar.google.com")
     print(events, ids)
-
+"""
 
 if __name__ == "__main__":
-    main()
+    pass
+    # main()
