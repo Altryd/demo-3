@@ -4,13 +4,30 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_mistralai import ChatMistralAI
+from langchain_community.chat_models import ChatOllama
 from dotenv import load_dotenv
 from langchain_tools import list_calendar_events, create_calendar_event, delete_calendar_event, update_calendar_event
+from logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 load_dotenv()
 api_key = os.getenv("MISTRAL_API_KEY")
+model_provider = os.getenv("MODEL_PROVIDER", "mistral").lower()  # По умолчанию Mistral
+ollama_model = os.getenv("OLLAMA_MODEL", "llama3")
+ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
-llm = ChatMistralAI(api_key=api_key, model="mistral-medium-latest")
+if model_provider == "mistral":
+    if not api_key:
+        raise ValueError("MISTRAL_API_KEY not found in .env file")
+    llm = ChatMistralAI(api_key=api_key, model="mistral-medium-latest")
+    logger.info("Using Mistral AI API")
+elif model_provider == "ollama":
+    llm = ChatOllama(model=ollama_model, base_url=ollama_host)
+    logger.info(f"Using Ollama with model {ollama_model} at {ollama_host}")
+else:
+    raise ValueError("Unsupported MODEL_PROVIDER. Use 'mistral' or 'ollama'.")
 
 system_prompt = """
 You are a helpful AI Agent. The current date and time is {now}. The needed timezone is UTC+4 (Europe/Samara).
@@ -77,17 +94,16 @@ def main():
     print(result)
     """
     history = []
-    user_input = input("Введите ваш запрос (например, 'What's my schedule tomorrow?' или 'Add a meeting tomorrow at 3 PM'): ")
-    history.append(HumanMessage(content=user_input))
-    response = agent_executor.invoke({"messages": history})
-    history.append(SystemMessage(content=response["output"]))
-    print(response["output"])
+    while True:
+        user_input = input("\nВведите ваш запрос (например, 'What's my schedule tomorrow?' или 'Add a meeting tomorrow at 3 PM'): "
+                           "Чтобы выйти - напишите exit\n")
+        if user_input.lower() == "exit":
+            break
 
-    user_input = input("Введите ваш запрос далее")
-    history.append(HumanMessage(content=user_input))
-    response = agent_executor.invoke({"messages": history})
-    history.append(SystemMessage(content=response["output"]))
-    print(response["output"])
+        history.append(HumanMessage(content=user_input))
+        response = agent_executor.invoke({"messages": history})
+        history.append(SystemMessage(content=response["output"]))
+        print(response["output"])
 
     print(f"\n\nПолная история: {history}")
 
