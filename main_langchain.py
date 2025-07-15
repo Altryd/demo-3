@@ -13,15 +13,25 @@ from logging_config import get_logger
 logger = get_logger(__name__)
 
 load_dotenv()
-api_key = os.getenv("MISTRAL_API_KEY")
-model_provider = os.getenv("MODEL_PROVIDER", "mistral").lower()  # По умолчанию Mistral
+mistral_api_key = os.getenv("MISTRAL_API_KEY")
+model_provider = os.getenv("MODEL_PROVIDER", "mistral").lower()
 ollama_model = os.getenv("OLLAMA_MODEL", "llama3")
 ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+openrouter_model = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free")  # Default OpenRouter model
+
+# Initialize the fallback Mistral LLM
+if not mistral_api_key:
+    logger.warning("MISTRAL_API_KEY not found in .env file, fallback will not be available")
+    mistral_llm = None
+else:
+    mistral_llm = ChatMistralAI(api_key=mistral_api_key, model="mistral-medium-latest")
+    logger.info("Mistral fallback LLM initialized")
+
 
 if model_provider == "mistral":
-    if not api_key:
+    if not mistral_api_key:
         raise ValueError("MISTRAL_API_KEY not found in .env file")
-    llm = ChatMistralAI(api_key=api_key, model="mistral-medium-latest")
+    llm = ChatMistralAI(api_key=mistral_api_key, model="mistral-medium-latest")
     logger.info("Using Mistral AI API")
 elif model_provider == "ollama":
     llm = ChatOllama(model=ollama_model, base_url=ollama_host)
