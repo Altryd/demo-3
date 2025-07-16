@@ -9,6 +9,7 @@ langchain_core
 langchain_together
 langchain_community
 langchain-mistralai
+langchain-ollama
 ossapi
 pydantic
 pymongo

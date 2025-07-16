@@ -4,7 +4,8 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_mistralai import ChatMistralAI
-from langchain_community.chat_models import ChatOllama
+# from langchain_community.chat_models import ChatOllama
+from langchain_ollama import ChatOllama
 from dotenv import load_dotenv
 from langchain_tools import list_calendar_events, create_calendar_event, delete_calendar_event, update_calendar_event
 from logging_config import get_logger
