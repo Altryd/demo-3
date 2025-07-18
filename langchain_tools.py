@@ -182,7 +182,7 @@ def update_calendar_event(event_id: str,
         current_event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
         updated_event = {**current_event, **event}
         service.events().update(calendarId=calendar_id, eventId=event_id, body=updated_event).execute()
-        return f"Event with ID {event_id} successfully updated! You can view it here: {event.get('htmlLink')}"  # TODO: bad link
+        return f"Event with ID {event_id} successfully updated! You can view it here: {updated_event.get('htmlLink')}"
     except Exception as e:
         return f"Error updating event: {str(e)}"
 
