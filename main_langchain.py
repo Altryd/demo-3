@@ -4,11 +4,12 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_mistralai import ChatMistralAI
-# from langchain_community.chat_models import ChatOllama
 from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 from langchain_tools import list_calendar_events, create_calendar_event, delete_calendar_event, update_calendar_event
 from logging_config import get_logger
+import requests
 
 
 logger = get_logger(__name__)
@@ -19,26 +20,37 @@ model_provider = os.getenv("MODEL_PROVIDER", "mistral").lower()
 ollama_model = os.getenv("OLLAMA_MODEL", "llama3")
 ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 openrouter_model = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free")  # Default OpenRouter model
+openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
 
-# Initialize the fallback Mistral LLM
-if not mistral_api_key:
-    logger.warning("MISTRAL_API_KEY not found in .env file, fallback will not be available")
+
+def initialize_llm():
+    """Initialize LLM based on MODEL_PROVIDER with fallback logic."""
     mistral_llm = None
-else:
-    mistral_llm = ChatMistralAI(api_key=mistral_api_key, model="mistral-medium-latest")
-    logger.info("Mistral fallback LLM initialized")
+    if mistral_api_key:
+        mistral_llm = ChatMistralAI(api_key=mistral_api_key, model="mistral-medium-latest")
+        logger.info("Mistral fallback LLM initialized")
+    else:
+        logger.warning("MISTRAL_API_KEY not found in .env file, Mistral fallback unavailable")
 
-
-if model_provider == "mistral":
-    if not mistral_api_key:
-        raise ValueError("MISTRAL_API_KEY not found in .env file")
-    llm = ChatMistralAI(api_key=mistral_api_key, model="mistral-medium-latest")
-    logger.info("Using Mistral AI API")
-elif model_provider == "ollama":
-    llm = ChatOllama(model=ollama_model, base_url=ollama_host)
-    logger.info(f"Using Ollama with model {ollama_model} at {ollama_host}")
-else:
-    raise ValueError("Unsupported MODEL_PROVIDER. Use 'mistral' or 'ollama'.")
+    if model_provider == "openrouter":
+        if not openrouter_api_key:
+            if mistral_llm:
+                logger.warning("OPENROUTER_API_KEY not found, falling back to Mistral")
+                return mistral_llm, None
+            raise ValueError("OPENROUTER_API_KEY not found and no Mistral fallback available")
+        logger.info(f"Using OpenRouter API with model {openrouter_model}")
+        return mistral_llm, ChatOpenAI(model=openrouter_model, api_key=openrouter_api_key,
+                                       base_url="https://openrouter.ai/api/v1")
+    elif model_provider == "mistral":
+        if not mistral_api_key:
+            raise ValueError("MISTRAL_API_KEY not found in .env file")
+        logger.info("Using Mistral AI API")
+        return mistral_llm, ChatMistralAI(api_key=mistral_api_key, model="mistral-medium-latest")
+    elif model_provider == "ollama":
+        logger.info(f"Using Ollama with model {ollama_model} at {ollama_host}")
+        return mistral_llm, ChatOllama(model=ollama_model, base_url=ollama_host)
+    else:
+        raise ValueError("Unsupported MODEL_PROVIDER. Use 'mistral', 'openrouter', or 'ollama'.")
 
 system_prompt = """
 You are a helpful AI Agent. The current date and time is {now}. The needed timezone is UTC+4 (Europe/Samara).
@@ -95,47 +107,62 @@ Example workflow for update/delete:
 - User: "Update event ID 14gngu8rb71tkam27fk1to08jv to start at 11:00"
 - Agent: Confirms, "Do you want to update 'Meeting A' (ID: 14gngu8rb71tkam27fk1to08jv) to start at 11:00 on 2025-07-15?" and proceeds only after confirmation.
 """
-now = datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z")
 
-# промпт
-prompt = ChatPromptTemplate.from_messages([
-    SystemMessage(content=system_prompt.format(now=now)),
-    MessagesPlaceholder(variable_name="messages"),
-    MessagesPlaceholder(variable_name="agent_scratchpad"),
-])
 
 tools = [list_calendar_events, create_calendar_event, delete_calendar_event, update_calendar_event]
 
-agent = create_tool_calling_agent(llm=llm, tools=tools, prompt=prompt)
-agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+
+def create_agent_executor(llm, tools, prompt):
+    """Create an AgentExecutor with the given LLM, tools, and prompt."""
+    try:
+        agent = create_tool_calling_agent(llm=llm, tools=tools, prompt=prompt)
+        return AgentExecutor(agent=agent, tools=tools, verbose=True)
+    except Exception as e:
+        logger.error(f"Failed to create agent with LLM: {str(e)}")
+        raise
 
 
 def main():
-    # user_input = input("Введите ваш запрос (например, 'What's my schedule tomorrow?' или 'Add a meeting tomorrow at 3 PM'): ")
-    """
-    result = create_calendar_event.invoke(input={
-        "summary":"Test Meeting",
-        "location": None,
-        "start_datetime":"2025-07-13T15:00:00+04:00",
-        "end_datetime":"2025-07-13T16:00:00+04:00",
-        "calendar_id":"4332dd8d4199feba063d2bfab712522c230fb3529ebe4e8e23d1554722f18087@group.calendar.google.com",
-        "description":"Test event",
-        "attendees":[]
-        }
-    )
-    print(result)
-    """
+    mistral_llm, llm = initialize_llm()
     history = []
     while True:
         user_input = input("\nВведите ваш запрос (например, 'What's my schedule tomorrow?' или 'Add a meeting tomorrow at 3 PM'): "
                            "Чтобы выйти - напишите exit\n")
         if user_input.lower() == "exit":
             break
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z")
+
+        # промпт
+        prompt = ChatPromptTemplate.from_messages([
+            SystemMessage(content=system_prompt.format(now=now)),
+            MessagesPlaceholder(variable_name="messages"),
+            MessagesPlaceholder(variable_name="agent_scratchpad"),
+        ])
+        agent_executor = create_agent_executor(llm, tools, prompt)
 
         history.append(HumanMessage(content=user_input))
-        response = agent_executor.invoke({"messages": history})
-        history.append(SystemMessage(content=response["output"]))
-        print(response["output"])
+        try:
+            response = agent_executor.invoke({"messages": history})
+            history.append(SystemMessage(content=response["output"]))
+            print(response["output"])
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 429 and model_provider == "openrouter" and mistral_llm:
+                logger.warning("OpenRouter rate limit exceeded, falling back to Mistral")
+                llm = mistral_llm
+                agent_executor = create_agent_executor(llm, tools, prompt)
+                try:
+                    response = agent_executor.invoke({"messages": history})
+                    history.append(SystemMessage(content=response["output"]))
+                    print(response["output"])
+                except Exception as fallback_e:
+                    logger.error(f"Mistral fallback failed: {str(fallback_e)}")
+                    print("Error: OpenRouter rate limit exceeded and Mistral fallback failed. Please try again later.")
+            else:
+                logger.error(f"Error invoking agent: {str(e)}")
+                print(f"Error: Failed to process request due to {str(e)}. Please check your connection or try again.")
+        except Exception as e:
+            logger.error(f"Unexpected error: {str(e)}")
+            print(f"Error: An unexpected error occurred: {str(e)}. Please try again.")
 
     print(f"\n\nПолная история: {history}")
 
