@@ -7,8 +7,8 @@ from langchain_mistralai import ChatMistralAI
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
-from langchain_tools import list_calendar_events, create_calendar_event, delete_calendar_event, update_calendar_event
-from logging_config import get_logger
+from src.google_calendar.google_calendar import list_calendar_events, create_calendar_event, delete_calendar_event, update_calendar_event
+from src.utlis.logging_config import get_logger
 import requests
 
 
