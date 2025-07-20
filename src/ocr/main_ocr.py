@@ -11,7 +11,7 @@ import io
 import os
 import requests
 from langchain_core.tools import tool
-from logging_config import get_logger
+from src.utlis.logging_config import get_logger
 
 logger = get_logger(__name__)
 
