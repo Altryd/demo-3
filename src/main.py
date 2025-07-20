@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from src.google_calendar.google_calendar import list_calendar_events, create_calendar_event, delete_calendar_event, update_calendar_event
 from src.utlis.logging_config import get_logger
 import requests
-
+from src.ocr.main_ocr import read_from_image
 
 logger = get_logger(__name__)
 
@@ -100,6 +100,10 @@ Instructions:
 8. Event IDs are strings like '14gngu8rb71tkam27fk1to08jv' or '35gc50jmu343lm0jga3adge1or'. Never generate or assume an event ID without fetching it via `list_calendar_events`.
 9. Respond clearly and concisely in natural language, ensuring all actions (create, update, delete) are confirmed by the user before execution.
 10. If the user provides incomplete details for creating or updating an event, prompt for missing information before proceeding.
+11. Use the `read_from_image` tool to extract text from images. The tool accepts a local image path or URL and a list of languages (e.g., ['en', 'ja']). 
+    - If the user requests translation (e.g., "Translate text from image.png"), extract the text and translate it (e.g., to Russian).
+    - If the text contains dates or event details (e.g., "Meeting 2025-07-20"), suggest creating a calendar event and ask for confirmation.
+    - Handle errors gracefully and inform the user (e.g., "Failed to process image").
 
 Example workflow for update/delete:
 - User: "Update the meeting"
@@ -109,7 +113,7 @@ Example workflow for update/delete:
 """
 
 
-tools = [list_calendar_events, create_calendar_event, delete_calendar_event, update_calendar_event]
+tools = [list_calendar_events, create_calendar_event, delete_calendar_event, update_calendar_event, read_from_image]
 
 
 def create_agent_executor(llm, tools, prompt):
