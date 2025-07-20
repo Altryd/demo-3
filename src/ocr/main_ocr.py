@@ -112,14 +112,13 @@ def read_from_image(image_path: str, languages: List[str] = ['en']):
         Returns:
             dict: {'text': extracted_text, 'status': 'success'} or {'error': error_message, 'status': 'error'} if failed.
     """
-    easy_result = read_from_image_easyocr(image_path, languages=languages)
-    if easy_result["status"] == "success" and easy_result["text"].strip():
-        text = easy_result["text"]
+    mistral_result = mistral_ocr(image_path)
+    if mistral_result["status"] == "success" and mistral_result["text"].strip():
+        text = mistral_result["text"]
     else:
-        # Mistral OCR
-        mistral_result = mistral_ocr(image_path)
-        if mistral_result["status"] == "success" and mistral_result["text"].strip():
-            text = mistral_result["text"]
+        easy_result = read_from_image_easyocr(image_path, languages=languages)
+        if easy_result["status"] == "success" and easy_result["text"].strip():
+            text = easy_result["text"]
         else:
             return {"error": "Both OCR methods failed.", "status": "error"}
     return {"text": text, "status": "success"}
