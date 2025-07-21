@@ -91,8 +91,17 @@ postgres_engine = create_engine(
 
 PostgresSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=postgres_engine)
 
-@contextmanager
+
 def get_db():
+    db = PostgresSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@contextmanager
+def get_db_for_debug():
     db = PostgresSessionLocal()
     try:
         yield db

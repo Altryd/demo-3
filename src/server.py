@@ -133,6 +133,13 @@ logger = get_logger(__name__)
 async def health_check():
     return {"status": "healthy"}
 
+from src.routers import health, speed_test, user, chat, message # , query TODO
+app.include_router(health.router)
+# app.include_router(query.router)
+app.include_router(speed_test.router)
+app.include_router(user.router)
+app.include_router(chat.router)
+app.include_router(message.router)
 
 if __name__ == "__main__":
     import uvicorn
