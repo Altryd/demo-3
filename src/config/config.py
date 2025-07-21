@@ -18,6 +18,13 @@ class Config:
     LANGSMITH_ENDPOINT = "https://api.smith.langchain.com"
     LANGSMITH_PROJECT = "pr-notable-divider-48"
 
+    MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
+    MODEL_PROVIDER = os.getenv("MODEL_PROVIDER", "mistral").lower()
+    OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
+    OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free")  # Default OpenRouter model
+    OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+
     LLM_API_KEY = os.getenv("KIMI_API_KEY")
     LLM_BASE_URL = "https://openrouter.ai/api/v1"
     LLM_MODEL = "google/gemma-3n-e2b-it:free"

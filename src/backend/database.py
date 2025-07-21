@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, Enum, Boolean, DateTime, func, Float, JSON
@@ -89,7 +91,7 @@ postgres_engine = create_engine(
 
 PostgresSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=postgres_engine)
 
-
+@contextmanager
 def get_db():
     db = PostgresSessionLocal()
     try:
