@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Type
 from sqlalchemy import and_
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -144,7 +144,7 @@ class LLMInterface:
             logger.error(f"Failed to create agent with LLM: {str(e)}")
             raise
 
-    def generate(self, question: str, history: str,
+    def generate(self, question: str, history: List[Type[Message]],
                  context: List[dict], language: str) -> str:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z")
 

@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Type
 from src.backend.models import ChatGet, ChatPost, MessageGet
 from src.backend.database import Chat, Message
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -10,7 +10,7 @@ from fastapi import HTTPException
 logger = get_logger(__name__)
 
 
-def convert_to_messages(history_records: List[dict]) -> List:
+def convert_to_messages(history_records: List[Type[Message]]) -> List:
     """Преобразует записи из базы в объекты сообщений LangChain."""
     messages = []
     for record in history_records:
