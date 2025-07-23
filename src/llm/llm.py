@@ -13,6 +13,7 @@ from src.backend.database import get_db, Message
 from src.config.config import Config
 from src.google_calendar.google_calendar import list_calendar_events, create_calendar_event, delete_calendar_event, \
     update_calendar_event
+from src.speed_tool.speed import get_speed_test_results
 from src.utlis.logging_config import get_logger
 import requests
 from src.ocr.main_ocr import read_from_image
@@ -36,7 +37,7 @@ class LLMInterface:
         self.config = Config()
         self.tools = [
             list_calendar_events, create_calendar_event, delete_calendar_event,
-            update_calendar_event, read_from_image
+            update_calendar_event, read_from_image, get_speed_test_results
         ]
         self.mistral_llm = None
         self.llm = self._initialize_llm()
@@ -94,6 +95,20 @@ class LLMInterface:
             - If the user requests translation (e.g., "Translate text from image.png"), extract the text and translate it (e.g., to Russian).
             - If the text contains dates or event details (e.g., "Meeting 2025-07-20"), suggest creating a calendar event and ask for confirmation.
             - Handle errors gracefully and inform the user (e.g., "Failed to process image").
+        12. For requests related to speed test results (e.g., "Show my speed test results" or "What were my last tapping speed tests?"):
+            - Invoke the `get_speed_test_results` tool with user_id: {user_id}
+            - Do NOT ask the user for a user ID, as it is handled automatically.
+            - DO NOT reveal the user ID to user.
+            - The tool will return a formatted string with results, including stream speed, unstable rate, timestamp, taps, and time.
+            - If no results are found, inform the user (e.g., "No speed test results found for your account").
+            - If an error occurs, inform the user (e.g., "Failed to retrieve speed test results").
+            - Remember that Unstable rate (UR) is a measurement of variation of hit errors throughout a play. 
+            It is calculated as the standard deviation of hit errors, displayed in tenths of a millisecond. 
+            A lower UR indicates that the player's hits have more similar errors, while a higher UR indicates they are more spread apart.
+            - Example output:
+              "Here are your speed test results:
+               1. Timestamp: 2025-07-20T10:00:00, Stream Speed: 170 BPM, Unstable Rate: 125.4, Taps: 10, Time: 10 sec
+               2. Timestamp: 2025-07-19T15:30:00, Stream Speed: 200 BPM, Unstable Rate: 150.2, Taps: 12, Time: 13 sec"
 
         Example workflow for update/delete:
         - User: "Update the meeting"
@@ -101,9 +116,6 @@ class LLMInterface:
         - User: "Update event ID 14gngu8rb71tkam27fk1to08jv to start at 11:00"
         - Agent: Confirms, "Do you want to update 'Meeting A' (ID: 14gngu8rb71tkam27fk1to08jv) to start at 11:00 on 2025-07-15?" and proceeds only after confirmation.
         """
-
-        self.tools = [list_calendar_events, create_calendar_event, delete_calendar_event, update_calendar_event,
-                 read_from_image]
         if self.config.MISTRAL_API_KEY:
             self.mistral_llm = ChatMistralAI(api_key=self.config.MISTRAL_API_KEY, model="mistral-medium-latest")
             logger.info("Mistral fallback LLM initialized")
@@ -145,12 +157,12 @@ class LLMInterface:
             raise
 
     def generate(self, question: str, history: List[Type[Message]],
-                 context: List[dict], language: str) -> str:
+                 context: List[dict], language: str, user_id: Optional[int] = None) -> str:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z")
 
         # промпт
         prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content=self.system_prompt.format(now=now)),
+            SystemMessage(content=self.system_prompt.format(now=now, user_id=user_id)),
             MessagesPlaceholder(variable_name="messages"),
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])
@@ -161,7 +173,9 @@ class LLMInterface:
         # Добавление нового вопроса
         messages.append(HumanMessage(content=question))
         try:
-            response = agent_executor.invoke({"messages": messages})
+            response = agent_executor.invoke({
+                "messages": messages,
+            })
             messages.append(SystemMessage(content=response["output"]))
             print(response["output"])
             return response["output"]
@@ -171,7 +185,9 @@ class LLMInterface:
                 self.llm = self.mistral_llm
                 agent_executor = self.create_agent_executor(self.llm, self.tools, prompt)
                 try:
-                    response = agent_executor.invoke({"messages": messages})
+                    response = agent_executor.invoke({
+                        "messages": messages,
+                    })
                     messages.append(SystemMessage(content=response["output"]))
                     print(response["output"])
                     return response["output"]
