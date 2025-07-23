@@ -80,6 +80,8 @@ def mistral_ocr(image_path: str) -> dict:
     client = get_mistral_client()
     try:
         if image_path.startswith(('http://', 'https://')):
+            if image_path.startswith('http://'):  # TODO: that's a cringe fix but it is that it is..
+                image_path = image_path.replace('http://', 'https://')
             ocr_response = client.ocr.process(
                 model="mistral-ocr-latest",
                 document={"type": "image_url", "image_url": image_path},
@@ -116,16 +118,18 @@ def read_from_image(image_path: str, languages: List[str] = ['en']):
     if mistral_result["status"] == "success" and mistral_result["text"].strip():
         text = mistral_result["text"]
     else:
+        logger.warning(f"Mistral OCR failed for the image: {image_path}")
         easy_result = read_from_image_easyocr(image_path, languages=languages)
         if easy_result["status"] == "success" and easy_result["text"].strip():
             text = easy_result["text"]
         else:
+            logger.error(f"Both OCR methods failed for the image: {image_path}")
             return {"error": "Both OCR methods failed.", "status": "error"}
     return {"text": text, "status": "success"}
 
 
 if __name__ == "__main__":
-    mistral_res = mistral_ocr("https://i.ppy.sh/ec662a5d4c44e55914025472d38e1de500479fa6/68747470733a2f2f692e6962622e636f2f644b536d5673392f33726462616e6e65722e706e67")
-    result = read_from_image.invoke("https://i.ppy.sh/ec662a5d4c44e55914025472d38e1de500479fa6/68747470733a2f2f692e6962622e636f2f644b536d5673392f33726462616e6e65722e706e67", languages=['ru'])
+    mistral_res = mistral_ocr("http://0x0.st/8dY5.png")
+    result = read_from_image.invoke("http://0x0.st/8dY5.png", languages=['ru', 'en'])
     print(result)
     print(f"mistral_res: {mistral_res}")
