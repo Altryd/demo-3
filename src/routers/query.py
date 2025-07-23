@@ -37,14 +37,14 @@ async def process_query(query: Query, db: Session = Depends(get_db)):
         language = ""
 
         # formatted_history = format_history(chat_history)
-        answer = llm.generate(question, chat_history, context, language)
+        answer = llm.generate(question, chat_history, context, language, user_id=query.user_id)
 
         chat = db.query(Chat).filter(
             Chat.id == query.chat_id,
             Chat.user_id == query.user_id,
             Chat.is_deleted == False
         ).first()
-        if not chat:
+        if not chat:  # TODO: maybe do that check before invoking ???
             raise HTTPException(status_code=404, detail="Chat not found or does not belong to user")
 
         db.add_all([
