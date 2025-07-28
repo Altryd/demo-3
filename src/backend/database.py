@@ -84,6 +84,24 @@ class SpeedTestResult(Base):
     timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class UserCalendar(Base):
+    __tablename__ = "user_calendar"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer,
+                     ForeignKey(
+                         "user.id",
+                         ondelete="CASCADE"
+                     ),
+                     nullable=False, index=True)
+    # user = relationship("User", back_populates="calendars")
+    calendar_id = Column(String, nullable=False)
+    access_token = Column(String, nullable=False)
+    refresh_token = Column(String, nullable=True)
+    token_expiry = Column(String, nullable=True)  # Храним в формате ISO
+    is_active = Column(Boolean, default=True)
+
+
 postgres_engine = create_engine(
     Config.POSTGRES_DATABASE_URL,
     echo=True
