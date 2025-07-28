@@ -21,12 +21,22 @@ router = APIRouter()
 @router.post("/query", response_model=QueryResponse)
 async def process_query(query: Query, db: Session = Depends(get_db)):
     try:
+        chat = db.query(Chat).filter(
+            Chat.id == query.chat_id,
+            Chat.user_id == query.user_id,
+            Chat.is_deleted == False
+        ).first()
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found or does not belong to user")
+
         question = query.question
         # language = query.language or detect_language(question)
-        chat_history = db.query(Message).filter(
+        chat_history = (db.query(Message).filter(
             and_(
                 Message.is_deleted == False,
-                Message.chat_id == query.chat_id)).all()
+                Message.chat_id == query.chat_id))
+                        .order_by(Message.id)
+                        .all())
         # chat_history = context_manager.get_context(query.user_id, query.chat_id, db=db)
         """
         context = rag.retrieve(question, k=4)
@@ -37,15 +47,8 @@ async def process_query(query: Query, db: Session = Depends(get_db)):
         language = ""
 
         # formatted_history = format_history(chat_history)
-        answer = llm.generate(question, chat_history, context, language, user_id=query.user_id)
-
-        chat = db.query(Chat).filter(
-            Chat.id == query.chat_id,
-            Chat.user_id == query.user_id,
-            Chat.is_deleted == False
-        ).first()
-        if not chat:  # TODO: maybe do that check before invoking ???
-            raise HTTPException(status_code=404, detail="Chat not found or does not belong to user")
+        answer = llm.generate(db=db, question=question, history=chat_history, context=context, language=language,
+                              user_id=query.user_id,  chat_id=query.chat_id)  # calendar_id="", TODO calendar_id !!!
 
         db.add_all([
             Message(chat_id=query.chat_id, text=question, role="user", is_deleted=False),

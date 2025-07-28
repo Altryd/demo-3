@@ -1,6 +1,8 @@
 import os
 from datetime import datetime
 from typing import List, Optional, Type
+from sqlalchemy.orm import Session
+from fastapi import HTTPException
 from sqlalchemy import and_
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -9,7 +11,7 @@ from langchain_mistralai import ChatMistralAI
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 
-from src.backend.database import get_db, Message
+from src.backend.database import get_db, Message, UserCalendar
 from src.config.config import Config
 from src.google_calendar.google_calendar import list_calendar_events, create_calendar_event, delete_calendar_event, \
     update_calendar_event
@@ -47,7 +49,7 @@ class LLMInterface:
         You are a helpful AI Agent. The current date and time is {now}. The needed timezone is UTC+4 (Europe/Samara).
 
         Your primary function is to assist with managing events in Google Calendar based on user requests. You can:
-        - View upcoming or specific events in Google Calendar using the `list_calendar_events` tool.
+        - View upcoming or specific events in Google Calendar using the `list_calendar_events` tool and providing user_id: {user_id} while calling `list_calendar_events`.
         - Add new events to Google Calendar using the `create_calendar_event` tool with details like title, date, time, description, and attendees.
         - Update existing events in Google Calendar (e.g., change time, title, or other details)  using the `update_calendar_event` tool.
         - Delete events from Google Calendar using the `delete_calendar_event` tool with the event ID.
@@ -63,7 +65,8 @@ class LLMInterface:
              - Location: None unless specified.
              - Attendees: Empty list unless specified.
            - Prompt for missing information if critical (e.g., "Please specify the time or duration for the event").
-           - Format `start_datetime` and `end_datetime` in RFC3339 format (e.g., '2025-07-13T15:00:00+04:00') and use the calendar ID '4332dd8d4199feba063d2bfab712522c230fb3529ebe4e8e23d1554722f18087@group.calendar.google.com'.
+           - Format `start_datetime` and `end_datetime` in RFC3339 format (e.g., '2025-07-13T15:00:00+04:00').
+           - Invoke the `create_calendar_event` tool with user_id: {user_id}
 
         2. For requests to update an event (e.g., "Update the meeting"):
            - Always invoke `list_calendar_events` first to fetch the list of events for the relevant date or period.
@@ -73,6 +76,7 @@ class LLMInterface:
            - Do not invent or assume event IDs. Use only IDs retrieved from `list_calendar_events`.
            - If no matching event is found, inform the user and suggest checking the event details or date range.
            - Prompt for missing information if needed (e.g., "Please specify the new time or duration").
+           - Invoke the `update_calendar_event` tool with user_id: {user_id}
 
         3. For requests to delete an event (e.g., "Delete the meeting"):
            - Always invoke `list_calendar_events` first to fetch the list of events for the relevant date or period.
@@ -81,6 +85,7 @@ class LLMInterface:
            - Do not invoke `delete_calendar_event` until the user confirms the event ID.
            - Do not invent or assume event IDs. Use only IDs retrieved from `list_calendar_events`.
            - If no matching event is found, inform the user and suggest checking the event details or date range.
+           - Invoke the `delete_calendar_event` tool with user_id: {user_id}
 
         4. For schedule-related requests (e.g., "What's my schedule tomorrow?"):
            - Use the `list_calendar_events` tool to query Google Calendar for the relevant date or period.
@@ -156,13 +161,29 @@ class LLMInterface:
             logger.error(f"Failed to create agent with LLM: {str(e)}")
             raise
 
-    def generate(self, question: str, history: List[Type[Message]],
-                 context: List[dict], language: str, user_id: Optional[int] = None) -> str:
+    def generate(self, db: Session, question: str, history: List[Type[Message]],
+                 context: List[dict], language: str, user_id: Optional[int] = None,
+                 chat_id: Optional[int] = None) -> str:
+                 # calendar_id: str = "") -> str:
+        if not db:
+            raise ValueError("Database session is required")
+
+            # Проверка, что chat_id принадлежит user_id
+        if user_id is not None and chat_id is not None:
+            from src.backend.database import Chat
+            chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == user_id).first()
+            if not chat:
+                logger.error(f"Chat ID {chat_id} does not belong to user ID {user_id}")
+                raise HTTPException(status_code=403, detail="Chat does not belong to user")
+
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z")
 
         # промпт
         prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content=self.system_prompt.format(now=now, user_id=user_id)),
+            SystemMessage(content=self.system_prompt.format(now=now,
+                                                            user_id=user_id
+                                                            )),
+                                                            # calendar_id=calendar_id)),
             MessagesPlaceholder(variable_name="messages"),
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])
