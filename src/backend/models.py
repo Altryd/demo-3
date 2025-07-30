@@ -22,11 +22,32 @@ class ChatGet(BaseModel):
         from_attributes = True
 
 
+class AttachmentCreate(BaseModel):
+    url: str
+    file_name: Optional[str] = None
+    file_type: Optional[str] = None
+    file_size: Optional[int] = None
+
+
+class AttachmentGet(BaseModel):
+    id: int
+    url: str
+    file_name: Optional[str] = None
+    file_type: Optional[str] = None
+    file_size: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
 class MessageGet(BaseModel):
     id: int
     chat_id: int
     text: str
     role: Role
+    attachments: List[AttachmentGet] = []
+    # --- поле для контекста ---
+    context: Optional[List[str]] = None
 
     class Config:
         from_attributes = True
@@ -49,6 +70,7 @@ class Query(BaseModel):
     language: Optional[str] = None
     user_id: int
     chat_id: int
+    attachments: Optional[List[AttachmentCreate]] = None
 
 
 class QueryResponseContextItem(BaseModel):

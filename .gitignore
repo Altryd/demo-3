@@ -207,3 +207,9 @@ marimo/_lsp/
 __marimo__/
 /credentials.json
 /credentials_2.json
+src/backend/pgdata/base/5/3541_fsm
+src/backend/pgdata/base/5/3541
+src/backend/pgdata
+rag_indexes/chat_44/index.pkl
+rag_indexes/
+log.txt

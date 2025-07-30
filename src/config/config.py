@@ -19,7 +19,7 @@ class Config:
     LANGSMITH_PROJECT = "pr-notable-divider-48"
 
     MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
-    MODEL_PROVIDER = os.getenv("MODEL_PROVIDER", "mistral").lower()
+    MODEL_PROVIDER = os.getenv("MODEL_PROVIDER", "openrouter").lower()
     OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free")  # Default OpenRouter model

@@ -127,19 +127,15 @@ context_manager = ContextManager()
 """
 
 logger = get_logger(__name__)
-
-# REGION UTILS
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
-
-from src.routers import health, speed_test, user, chat, message, query
+from src.routers import health, speed_test, user, chat, message, query, attachment
 app.include_router(health.router)
 app.include_router(query.router)
 app.include_router(speed_test.router)
 app.include_router(user.router)
 app.include_router(chat.router)
 app.include_router(message.router)
+app.include_router(attachment.router)
+
 
 if __name__ == "__main__":
     import uvicorn

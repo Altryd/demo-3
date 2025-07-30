@@ -11,7 +11,24 @@ export interface Chat {
   id: number;
   summary: string;
   user_id: number;
-  created_at?: string;
+  created_at: string;
+}
+
+// --- НОВАЯ МОДЕЛЬ: Для данных, отправляемых на бэкенд ---
+export interface AttachmentCreate {
+  url: string;
+  file_name?: string;
+  file_type?: string;
+  file_size?: number;
+}
+
+// --- НОВАЯ МОДЕЛЬ: Для данных, получаемых с бэкенда ---
+export interface AttachmentGet {
+  id: number;
+  url: string;
+  file_name?: string;
+  file_type?: string;
+  file_size?: number;
 }
 
 export interface Message {
@@ -20,13 +37,15 @@ export interface Message {
   text: string;
   role: "user" | "assistant";
   context?: string[];
+  // --- ИЗМЕНЕНИЕ: Сообщение теперь может содержать вложения ---
+  attachments?: AttachmentGet[];
 }
 
 export interface NewChatResponse {
   id: number;
   user_id: number;
   summary: string;
-  created_at?: string;
+  created_at: string;
 }
 
 export interface QueryResponseContextItem {
@@ -95,10 +114,32 @@ export const createChat = (
     .then((res) => res.data);
 };
 
+// --- НОВАЯ ФУНКЦИЯ: Для загрузки файлов на сервер ---
+export const uploadFiles = (
+  files: File[],
+  signal: AbortSignal
+): Promise<AttachmentCreate[]> => {
+  const formData = new FormData();
+  files.forEach((file) => {
+    formData.append("files", file);
+  });
+
+  return axios
+    .post(`${API_BASE}/attachments/upload`, formData, {
+      signal,
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    })
+    .then((res) => res.data);
+};
+
 export const postQuery = (
   question: string,
   userId: number,
   chatId: number,
+  // --- ИЗМЕНЕНИЕ: Добавлен параметр для вложений ---
+  attachments: AttachmentCreate[] | null,
   signal: AbortSignal
 ): Promise<QueryResponse> => {
   const payload = {
@@ -106,6 +147,8 @@ export const postQuery = (
     language: null,
     user_id: userId,
     chat_id: chatId,
+    // --- ИЗМЕНЕНИЕ: Включаем вложения в тело запроса ---
+    attachments: attachments,
   };
 
   return axios.post(`${API_BASE}/query`, payload, { signal }).then((res) => {

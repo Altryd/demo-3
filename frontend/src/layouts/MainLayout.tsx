@@ -6,19 +6,20 @@ import { motion, AnimatePresence } from "framer-motion";
 import ChatList from "../components/ChatList";
 import ChatView from "../components/ChatView";
 import Welcome from "../components/Welcome";
-import MessageInput from "../components/MessageInput";
+import MessageInput, { type AttachmentFile } from "../components/MessageInput";
 import AnimatedBackground from "../components/AnimatedBackground";
 import {
   getChatMessages,
   createChat,
   postQuery,
   getUserChatsById,
+  uploadFiles,
 } from "../services/api";
 import type {
   Message,
-  NewChatResponse,
-  QueryResponse,
   Chat,
+  AttachmentCreate,
+  AttachmentGet,
 } from "../services/api";
 import type { ThemeName } from "../themes";
 
@@ -64,8 +65,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
 
-  const [_, _setThinkingChatIdInternal] = useState<number | null>(null);
+  const [, _setThinkingChatIdInternal] = useState<number | null>(null);
   const thinkingChatIdRef = useRef<number | null>(null);
+
+  const isFetchingRef = useRef(false);
 
   const setThinkingChatId = (newId: number | null, reason: string) => {
     logThinking(
@@ -78,19 +81,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({
     _setThinkingChatIdInternal(newId);
   };
 
-  const [optimisticUserMessageForNewChat, setOptimisticUserMessageForNewChat] =
-    useState<Message | null>(null);
-
   const scrollContainerRef = useRef<HTMLElement>(null);
   const queryAbortControllerRef = useRef<AbortController | null>(null);
-  const currentSelectedChatIdRef = useRef<number | null>(selectedChatId);
 
-  const isWelcomeLayout =
-    selectedChatId === null && optimisticUserMessageForNewChat === null;
-
-  useEffect(() => {
-    currentSelectedChatIdRef.current = selectedChatId;
-  }, [selectedChatId]);
+  const isWelcomeLayout = selectedChatId === null;
 
   useEffect(() => {
     if (currentUserId) {
@@ -112,18 +106,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({
     const controller = new AbortController();
     const chatIdToLoad = selectedChatId;
 
-    if (chatIdToLoad !== null) {
+    if (chatIdToLoad !== null && !isFetchingRef.current) {
       setLoadingMessages(true);
       getChatMessages(chatIdToLoad, controller.signal)
         .then((fetchedMessages) => {
           if (!controller.signal.aborted) {
             setMessages(fetchedMessages);
-            if (
-              optimisticUserMessageForNewChat &&
-              optimisticUserMessageForNewChat.chat_id === chatIdToLoad
-            ) {
-              setOptimisticUserMessageForNewChat(null);
-            }
           }
         })
         .catch((err: Error) => {
@@ -140,30 +128,15 @@ const MainLayout: React.FC<MainLayoutProps> = ({
             setLoadingMessages(false);
           }
         });
-    } else {
-      if (optimisticUserMessageForNewChat && thinkingChatIdRef.current === -1) {
-        setMessages([optimisticUserMessageForNewChat]);
-      } else {
-        setMessages([]);
-        if (optimisticUserMessageForNewChat) {
-          setOptimisticUserMessageForNewChat(null);
-        }
-      }
+    } else if (chatIdToLoad === null) {
+      setMessages([]);
       setLoadingMessages(false);
-      if (
-        thinkingChatIdRef.current === -1 &&
-        !optimisticUserMessageForNewChat
-      ) {
-        setThinkingChatId(
-          null,
-          "useEffect selectedChatId, welcome & no optimistic"
-        );
-      }
     }
+
     return () => {
       controller.abort();
     };
-  }, [selectedChatId, optimisticUserMessageForNewChat]);
+  }, [selectedChatId]);
 
   const handleChatDeleted = (deletedChatId: number) => {
     setUserChats((prevChats) =>
@@ -174,193 +147,158 @@ const MainLayout: React.FC<MainLayoutProps> = ({
     }
   };
 
-  const handleSendMessage = (text: string) => {
+  const handleSendMessage = async (
+    text: string,
+    attachments: AttachmentFile[]
+  ) => {
     queryAbortControllerRef.current?.abort();
     const controller = new AbortController();
     queryAbortControllerRef.current = controller;
 
-    const chatIdForThisRequest = selectedChatId;
+    let currentChatId = selectedChatId;
+    const isNewChat = currentChatId === null;
 
-    if (chatIdForThisRequest !== null) {
-      const userMessage: Message = {
-        id: Date.now(),
-        chat_id: chatIdForThisRequest,
-        text,
-        role: "user",
-      };
-      setMessages((prevMessages) => [...prevMessages, userMessage]);
+    try {
+      isFetchingRef.current = true;
       setThinkingChatId(
-        chatIdForThisRequest,
-        `handleSendMessage existing chat (${chatIdForThisRequest})`
+        isNewChat ? -1 : currentChatId,
+        `handleSendMessage start`
       );
 
-      postQuery(text, currentUserId, chatIdForThisRequest, controller.signal)
-        .then((response: QueryResponse) => {
-          if (controller.signal.aborted) return;
-          const sourceFileNames = response.context
-            .map((item) => item.source)
-            .filter(
-              (source): source is string =>
-                typeof source === "string" && source !== "unknown"
-            );
-          const assistantMessage: Message = {
-            id: Date.now() + 1,
-            chat_id: chatIdForThisRequest,
-            text: response.answer,
-            role: "assistant",
-            context: sourceFileNames.length > 0 ? sourceFileNames : undefined,
-          };
-          setMessages((prevMessages) => [...prevMessages, assistantMessage]);
-          setUserChats((prevChats) =>
-            prevChats
-              .map((chat) =>
-                chat.id === chatIdForThisRequest
-                  ? {
-                      ...chat,
-                      summary:
-                        response.summary ||
-                        response.answer.substring(0, 40) ||
-                        text.substring(0, 40),
-                    }
-                  : chat
-              )
-              .sort(
-                (a, b) =>
-                  (b.id === chatIdForThisRequest ? 1 : 0) -
-                    (a.id === chatIdForThisRequest ? 1 : 0) || 0
-              )
+      let attachmentPayload: AttachmentCreate[] | null = null;
+      if (attachments.length > 0) {
+        const filesToUpload = attachments
+          .map((a) => a.file)
+          .filter((f): f is File => f !== undefined);
+        const urlAttachments = attachments
+          .filter((a) => a.url)
+          .map((a) => ({ url: a.url!, file_name: a.url!, file_type: "url" }));
+
+        let uploadedFileData: AttachmentCreate[] = [];
+        if (filesToUpload.length > 0) {
+          uploadedFileData = await uploadFiles(
+            filesToUpload,
+            controller.signal
           );
-        })
-        .catch((err: Error) => {
-          if (err.name !== "CanceledError" && !controller.signal.aborted) {
-            console.error(
-              `[handleSendMessage existing] Error postQuery for chat ${chatIdForThisRequest}:`,
-              err
-            );
-            const errorMessage: Message = {
-              id: Date.now() + 1,
-              chat_id: chatIdForThisRequest,
-              text: "Произошла ошибка при обработке вашего запроса.",
-              role: "assistant",
-            };
-            setMessages((prev) => [...prev, errorMessage]);
-          }
-        })
-        .finally(() => {
-          if (
-            !controller.signal.aborted &&
-            thinkingChatIdRef.current === chatIdForThisRequest
-          ) {
-            setThinkingChatId(
-              null,
-              `handleSendMessage existing chat finally (${chatIdForThisRequest})`
-            );
-          }
-        });
-    } else {
+        }
+        attachmentPayload = [...uploadedFileData, ...urlAttachments];
+      }
+
+      const optimisticAttachments: AttachmentGet[] = (
+        attachmentPayload || []
+      ).map((att, index) => ({
+        id: Date.now() + index,
+        url: att.url,
+        file_name: att.file_name,
+        file_type: att.file_type,
+        file_size: att.file_size,
+      }));
+
+      if (isNewChat) {
+        const newChat = await createChat(
+          currentUserId,
+          text,
+          controller.signal
+        );
+        if (controller.signal.aborted)
+          throw new Error("Aborted after createChat");
+
+        currentChatId = newChat.id;
+        onSelectChat(newChat.id);
+        setUserChats((prev) => [
+          { ...newChat, summary: newChat.summary || text.substring(0, 30) },
+          ...prev,
+        ]);
+        setThinkingChatId(newChat.id, `new chat created (${newChat.id})`);
+      }
+
+      if (currentChatId === null) {
+        throw new Error(
+          "Chat ID is null after attempting to create a new chat."
+        );
+      }
+
       const userMessage: Message = {
         id: Date.now(),
-        chat_id: -1,
+        chat_id: currentChatId,
         text,
         role: "user",
+        attachments: optimisticAttachments,
       };
-      setOptimisticUserMessageForNewChat(userMessage);
-      setMessages([userMessage]);
-      setThinkingChatId(-1, "handleSendMessage new chat initial");
-      let tempCreatedChatId: number | null = null;
+      setMessages((prevMessages) => [...prevMessages, userMessage]);
 
-      createChat(currentUserId, text, controller.signal)
-        .then((newChat: NewChatResponse) => {
-          if (controller.signal.aborted) {
-            if (thinkingChatIdRef.current === -1) {
-              setThinkingChatId(
-                null,
-                "handleSendMessage new chat, createChat aborted early"
-              );
-            }
-            return Promise.reject(new Error("Aborted createChat"));
-          }
-          tempCreatedChatId = newChat.id;
-          onSelectChat(newChat.id);
-          setUserChats((prev) => [
-            { ...newChat, summary: newChat.summary || text.substring(0, 30) },
-            ...prev,
-          ]);
-          setMessages([{ ...userMessage, chat_id: newChat.id }]);
-          setOptimisticUserMessageForNewChat(null);
-          setThinkingChatId(
-            newChat.id,
-            `handleSendMessage new chat, after createChat (${newChat.id})`
-          );
+      const response = await postQuery(
+        text,
+        currentUserId,
+        currentChatId,
+        attachmentPayload,
+        controller.signal
+      );
 
-          return postQuery(
-            text,
-            currentUserId,
-            newChat.id,
-            controller.signal
-          ).then((response: QueryResponse) => {
-            if (controller.signal.aborted) return;
-            const sourceFileNames = response.context
-              .map((item) => item.source)
-              .filter(
-                (source): source is string =>
-                  typeof source === "string" && source !== "unknown"
-              );
-            const assistantMessage: Message = {
-              id: Date.now() + 1,
-              chat_id: newChat.id,
-              text: response.answer,
-              role: "assistant",
-              context: sourceFileNames.length > 0 ? sourceFileNames : undefined,
-            };
-            setMessages((prev) => [...prev, assistantMessage]);
-            onSelectChat(newChat.id);
-            setUserChats((prevChats) =>
-              prevChats.map((chat) =>
-                chat.id === newChat.id
-                  ? {
-                      ...chat,
-                      summary:
-                        response.summary ||
-                        response.answer.substring(0, 40) ||
-                        text.substring(0, 40),
-                    }
-                  : chat
-              )
-            );
-          });
-        })
-        .catch((err: Error) => {
-          if (err.message === "Aborted createChat") return;
-          if (err.name !== "CanceledError" && !controller.signal.aborted) {
-            console.error(
-              `[handleSendMessage new] Error in createChat/postQuery chain:`,
-              err
-            );
-            onSelectChat(null);
-            setOptimisticUserMessageForNewChat(null);
-            setMessages([]);
-          }
-        })
-        .finally(() => {
-          const idBeingThoughtAbout =
-            tempCreatedChatId !== null ? tempCreatedChatId : -1;
-          if (
-            !controller.signal.aborted &&
-            thinkingChatIdRef.current === idBeingThoughtAbout
-          ) {
-            setThinkingChatId(
-              null,
-              `handleSendMessage new chat finally (${idBeingThoughtAbout})`
-            );
-          }
-        });
+      const sourceFileNames = response.context
+        .map((item) => item.source)
+        .filter(
+          (source): source is string =>
+            typeof source === "string" && source !== "unknown"
+        );
+      const assistantMessage: Message = {
+        id: Date.now() + 1,
+        chat_id: currentChatId,
+        text: response.answer,
+        role: "assistant",
+        context: sourceFileNames.length > 0 ? sourceFileNames : undefined,
+      };
+      setMessages((prevMessages) => [...prevMessages, assistantMessage]);
+
+      if (
+        isNewChat ||
+        (response.summary &&
+          userChats.find((c) => c.id === currentChatId)?.summary !==
+            response.summary)
+      ) {
+        setUserChats((prevChats) =>
+          prevChats.map((chat) =>
+            chat.id === currentChatId
+              ? {
+                  ...chat,
+                  summary:
+                    response.summary ||
+                    response.answer.substring(0, 40) ||
+                    text.substring(0, 40),
+                }
+              : chat
+          )
+        );
+      }
+    } catch (err) {
+      console.error("[handleSendMessage] Caught an error:", err);
+      if (
+        err instanceof Error &&
+        err.name !== "CanceledError" &&
+        !controller.signal.aborted
+      ) {
+        const errorMessage: Message = {
+          id: Date.now() + 1,
+          chat_id: currentChatId ?? -1,
+          text: "Произошла ошибка при обработке вашего запроса. См. консоль для деталей.",
+          role: "assistant",
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+        if (isNewChat) {
+          onSelectChat(null);
+          setMessages([]);
+        }
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setThinkingChatId(null, `handleSendMessage finally`);
+        isFetchingRef.current = false;
+      }
     }
   };
 
   const isMessageInputDisabled = () => {
-    if (thinkingChatIdRef.current !== null) return true;
-    return false;
+    return thinkingChatIdRef.current !== null;
   };
 
   const pageVariants = {
@@ -406,7 +344,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({
           onNewChat={() => {
             queryAbortControllerRef.current?.abort();
             setThinkingChatId(null, "onNewChat");
-            setOptimisticUserMessageForNewChat(null);
             onSelectChat(null);
             setMessages([]);
           }}
@@ -528,12 +465,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({
                   <ChatView
                     messages={messages}
                     loading={loadingMessages}
-                    scrollContainerRef={scrollContainerRef}
-                    isBotThinking={
-                      thinkingChatIdRef.current === selectedChatId ||
-                      (optimisticUserMessageForNewChat !== null &&
-                        thinkingChatIdRef.current === -1)
-                    }
+                    isBotThinking={thinkingChatIdRef.current !== null}
                   />
                 </Box>
               </Box>

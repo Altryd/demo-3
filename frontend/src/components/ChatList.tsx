@@ -19,7 +19,6 @@ import {
   DialogContentText,
   DialogTitle,
   Button,
-
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import {
@@ -58,29 +57,40 @@ const themeDisplayNames: Record<ThemeName, string> = {
 const groupChatsByDate = (chats: Chat[]): Record<string, Chat[]> => {
   const groups: Record<string, Chat[]> = {};
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const yesterday = new Date(today);
+  const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
-  const dayBefore = new Date(today);
+  const dayBefore = new Date();
   dayBefore.setDate(today.getDate() - 2);
 
+  // Хелпер для сравнения "календарного дня" в локальном часовом поясе
+  const isSameDay = (d1: Date, d2: Date) => {
+    return (
+      d1.getFullYear() === d2.getFullYear() &&
+      d1.getMonth() === d2.getMonth() &&
+      d1.getDate() === d2.getDate()
+    );
+  };
+
   chats.forEach((chat) => {
-    let category: string;
     if (!chat.created_at) {
-      category = "Чаты без даты";
-    } else {
-      const chatDate = new Date(chat.created_at);
-      chatDate.setHours(0, 0, 0, 0);
-      if (chatDate.getTime() === today.getTime()) {
-        category = "Сегодня";
-      } else if (chatDate.getTime() === yesterday.getTime()) {
-        category = "Вчера";
-      } else if (chatDate.getTime() === dayBefore.getTime()) {
-        category = "Позавчера";
-      } else {
-        category = "Ранее";
-      }
+      if (!groups["Чаты без даты"]) groups["Чаты без даты"] = [];
+      groups["Чаты без даты"].push(chat);
+      return;
     }
+
+    const chatDate = new Date(chat.created_at);
+    let category: string;
+
+    if (isSameDay(chatDate, today)) {
+      category = "Сегодня";
+    } else if (isSameDay(chatDate, yesterday)) {
+      category = "Вчера";
+    } else if (isSameDay(chatDate, dayBefore)) {
+      category = "Позавчера";
+    } else {
+      category = "Ранее";
+    }
+
     if (!groups[category]) {
       groups[category] = [];
     }
