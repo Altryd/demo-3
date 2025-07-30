@@ -4,6 +4,7 @@ import { KeyboardArrowLeft, KeyboardArrowRight } from "@mui/icons-material";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import ChatList from "../components/ChatList";
+import GoogleAuthButton from "../components/google/GoogleAuthButton";
 import ChatView from "../components/ChatView";
 import Welcome from "../components/Welcome";
 import MessageInput from "../components/MessageInput";
@@ -399,6 +400,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({
           zIndex: 1,
         }}
       >
+        <GoogleAuthButton
+         currentUserId={currentUserId}/>
         <ChatList
           chats={userChats}
           selectedChatId={selectedChatId}

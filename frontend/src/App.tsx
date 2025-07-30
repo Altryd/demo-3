@@ -12,6 +12,7 @@ import { themes } from "./themes";
 import type { ThemeName } from "./themes";
 import GlobalScrollbar from "./themes/GlobalScrollbar";
 import AnimatedBackground from "./components/AnimatedBackground";
+import Callback from "./components/google/Callback";
 
 const AppRoutes = ({
   themeName,
@@ -76,6 +77,7 @@ const AppRoutes = ({
             path="/speed"
             element={<SpeedPage isAnimatedBgEnabled={isAnimatedBgEnabled} />}
           />
+          <Route path="/callback" element={<Callback />} />
         </Routes>
       </motion.div>
     </AnimatePresence>

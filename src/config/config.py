@@ -52,3 +52,6 @@ class Config:
     DATA_DIR = "data/"
     RAG_DIR = "rag_database"
     FT_DIR = "fine-tuning/dataset"
+
+    # frontend network
+    FRONTEND_ADDRESS = "http://localhost:5173/"

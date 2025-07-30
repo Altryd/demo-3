@@ -1,6 +1,6 @@
 from typing import Optional, List
-
 from fastapi import Depends, APIRouter, HTTPException
+from fastapi.responses import RedirectResponse
 from langchain_core.tools import tool
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -48,7 +48,7 @@ async def start_google_auth(user_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/auth/callback")
-async def google_auth_callback(code: str, state: str, db: Session = Depends(get_db)):
+async def google_auth_callback(code: str, state: str, db: Session = Depends(get_db)):  # TODO: не плодить по одному и тому же токену, а проверять, есть ли в БД уже этот user_id
     """
     Handle Google OAuth callback and store tokens.
     """
@@ -70,21 +70,31 @@ async def google_auth_callback(code: str, state: str, db: Session = Depends(get_
         flow.fetch_token(code=code)
         credentials = flow.credentials
 
-        # Сохраняем токены в базе данных
-        user_calendar = UserCalendar(
-            user_id=user_id,
-            calendar_id="primary",  # По умолчанию используем основной календарь
-            access_token=credentials.token,
-            refresh_token=credentials.refresh_token,
-            token_expiry=credentials.expiry.isoformat() if credentials.expiry else None,
-            is_active=True
-        )
-        db.add(user_calendar)
+        user_calendar = db.query(UserCalendar).filter(
+            UserCalendar.user_id == user_id,
+            UserCalendar.is_active == True
+        ).first()
+        if user_calendar:
+            user_calendar.access_token = credentials.token
+            user_calendar.refresh_token = credentials.refresh_token
+            user_calendar.token_expiry = credentials.expiry.isoformat() if credentials.expiry else None
+        else:
+            # Сохраняем токены в базе данных
+            user_calendar = UserCalendar(
+                user_id=user_id,
+                calendar_id="primary",  # По умолчанию используем основной календарь
+                access_token=credentials.token,
+                refresh_token=credentials.refresh_token,
+                token_expiry=credentials.expiry.isoformat() if credentials.expiry else None,
+                is_active=True
+            )
+            db.add(user_calendar)
         db.commit()
-        return {"message": "Authentication successful. Tokens stored."}
+        return RedirectResponse(url=f"{Config.FRONTEND_ADDRESS}/callback?status=success&user_id={user_id}")
     except Exception as e:
+        db.rollback()
         logger.error(f"Error in OAuth callback: {e}")
-        raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}")
+        return RedirectResponse(url=f"{Config.FRONTEND_ADDRESS}/callback?status=error&error={str(e)}")
 
 
 @router.get("/calendars")

@@ -53,8 +53,6 @@ def delete_chat(chat_id: int, db: Session = Depends(get_db)):
     try:
         db_chat.is_deleted = True
 
-        db.add(db_chat)
-
         db.query(Message).filter(Message.chat_id == chat_id).update({"is_deleted": True})
 
         db.commit()

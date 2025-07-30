@@ -49,12 +49,17 @@ async def process_query(query: Query, db: Session = Depends(get_db)):
         # formatted_history = format_history(chat_history)
         answer = llm.generate(db=db, question=question, history=chat_history, context=context, language=language,
                               user_id=query.user_id,  chat_id=query.chat_id)  # calendar_id="", TODO calendar_id !!!
-
-        db.add_all([
-            Message(chat_id=query.chat_id, text=question, role="user", is_deleted=False),
-            Message(chat_id=query.chat_id, text=answer, role="assistant", is_deleted=False)
-        ])
-        db.commit()
+        if not answer:
+            db.rollback()
+            db.query(Message).filter(Message.chat_id == chat.id).update({"is_deleted": True})
+            chat.is_deleted = True
+            db.commit()
+        else:
+            db.add_all([
+                Message(chat_id=query.chat_id, text=question, role="user", is_deleted=False),
+                Message(chat_id=query.chat_id, text=answer, role="assistant", is_deleted=False)
+            ])
+            db.commit()
 
         # context_manager.save_context(user_id=query.user_id, role="user", text=query.question, chat_id=query.chat_id)
         # context_manager.save_context(user_id=query.user_id, role="assistant", text=answer, chat_id=query.chat_id)
