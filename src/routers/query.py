@@ -28,10 +28,23 @@ IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp']
 async def process_query(query: Query, db: Session = Depends(get_db)):
     backup_llm = llm_interface.llm
     try:
+        
+        chat = db.query(Chat).filter(
+            Chat.id == query.chat_id,
+            Chat.user_id == query.user_id,
+            Chat.is_deleted == False
+        ).first()
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found or does not belong to user")
+        
+        question = query.question
+        # language = query.language or detect_language(question)
         chat_history = db.query(Message).filter(
             and_(
                 Message.is_deleted.is_(False),
-                Message.chat_id == query.chat_id)).all()
+                Message.chat_id == query.chat_id)
+                        .order_by(Message.id)
+                        .all())
 
         newly_indexed_docs = []
         attachment_prompts = []

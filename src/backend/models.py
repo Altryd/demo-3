@@ -116,3 +116,10 @@ class SpeedTestResultGet(BaseModel):
 
     class Config:
         from_attributes = True
+        
+class SelectCalendarRequest(BaseModel):
+    user_id: int
+    calendar_id: str
+
+    class Config:
+        from_attributes = True

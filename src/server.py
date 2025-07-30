@@ -127,7 +127,14 @@ context_manager = ContextManager()
 """
 
 logger = get_logger(__name__)
-from src.routers import health, speed_test, user, chat, message, query, attachment
+
+# REGION UTILS
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
+from src.routers import health, speed_test, user, chat, message, query, google_calendar_oauth, attachment
+
 app.include_router(health.router)
 app.include_router(query.router)
 app.include_router(speed_test.router)
@@ -135,7 +142,7 @@ app.include_router(user.router)
 app.include_router(chat.router)
 app.include_router(message.router)
 app.include_router(attachment.router)
-
+app.include_router(google_calendar_oauth.router)
 
 if __name__ == "__main__":
     import uvicorn

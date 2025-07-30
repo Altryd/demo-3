@@ -5,6 +5,13 @@ load_dotenv()
 
 
 class Config:
+    # Google envs
+    GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+    SCOPES = ['https://www.googleapis.com/auth/calendar']
+    REDIRECT_URI = "http://localhost:8000/auth/callback"  # Настроить если нужно потом релизнуть куда-то
+
+
     MYSQL_DATABASE_URL = (f"mysql+mysqlconnector://{os.getenv('MYSQL_USER')}:"
                           f"{os.getenv('MYSQL_PASSWORD')}@127.0.0.1:3308/{os.getenv('MYSQL_DATABASE')}")
     FILL_MYSQL_IF_EMPTY = True

@@ -1,6 +1,8 @@
 import os
 from datetime import datetime
 from typing import List, Optional, Type
+from sqlalchemy.orm import Session
+from fastapi import HTTPException
 from sqlalchemy import and_
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -12,10 +14,11 @@ from langchain_openai import ChatOpenAI
 from httpx import HTTPStatusError
 from openai import RateLimitError
 
-from src.backend.database import get_db, Message
+from src.backend.database import get_db, Message, UserCalendar
 from src.config.config import Config
 from src.google_calendar.google_calendar import list_calendar_events, create_calendar_event, delete_calendar_event, \
     update_calendar_event
+from src.speed_tool.speed import get_speed_test_results
 from src.utlis.logging_config import get_logger
 import requests
 from src.ocr.main_ocr import read_from_image
@@ -29,7 +32,7 @@ class LLMInterface:
         self.config = Config()
         self.tools = [
             list_calendar_events, create_calendar_event, delete_calendar_event,
-            update_calendar_event, read_from_image
+            update_calendar_event, read_from_image, get_speed_test_results
         ]
         self.mistral_llm = None
         self.llm = self._initialize_llm()
@@ -39,7 +42,7 @@ class LLMInterface:
         You are a helpful AI Agent. The current date and time is {now}. The needed timezone is UTC+4 (Europe/Samara).
 
         Your primary function is to assist with managing events in Google Calendar based on user requests. You can:
-        - View upcoming or specific events in Google Calendar using the `list_calendar_events` tool.
+        - View upcoming or specific events in Google Calendar using the `list_calendar_events` tool and providing user_id: {user_id} while calling `list_calendar_events`.
         - Add new events to Google Calendar using the `create_calendar_event` tool with details like title, date, time, description, and attendees.
         - Update existing events in Google Calendar (e.g., change time, title, or other details)  using the `update_calendar_event` tool.
         - Delete events from Google Calendar using the `delete_calendar_event` tool with the event ID.
@@ -55,7 +58,8 @@ class LLMInterface:
              - Location: None unless specified.
              - Attendees: Empty list unless specified.
            - Prompt for missing information if critical (e.g., "Please specify the time or duration for the event").
-           - Format `start_datetime` and `end_datetime` in RFC3339 format (e.g., '2025-07-13T15:00:00+04:00') and use the calendar ID 'bb5dc868e699caa679f120036d22a69dac91a6a32e79eaab345abfe42e61740e@group.calendar.google.com'.
+           - Format `start_datetime` and `end_datetime` in RFC3339 format (e.g., '2025-07-13T15:00:00+04:00').
+           - Invoke the `create_calendar_event` tool with user_id: {user_id}
 
         2. For requests to update an event (e.g., "Update the meeting"):
            - Always invoke `list_calendar_events` first to fetch the list of events for the relevant date or period.
@@ -65,6 +69,7 @@ class LLMInterface:
            - Do not invent or assume event IDs. Use only IDs retrieved from `list_calendar_events`.
            - If no matching event is found, inform the user and suggest checking the event details or date range.
            - Prompt for missing information if needed (e.g., "Please specify the new time or duration").
+           - Invoke the `update_calendar_event` tool with user_id: {user_id}
 
         3. For requests to delete an event (e.g., "Delete the meeting"):
            - Always invoke `list_calendar_events` first to fetch the list of events for the relevant date or period.
@@ -73,6 +78,7 @@ class LLMInterface:
            - Do not invoke `delete_calendar_event` until the user confirms the event ID.
            - Do not invent or assume event IDs. Use only IDs retrieved from `list_calendar_events`.
            - If no matching event is found, inform the user and suggest checking the event details or date range.
+           - Invoke the `delete_calendar_event` tool with user_id: {user_id}
 
         4. For schedule-related requests (e.g., "What's my schedule tomorrow?"):
            - Use the `list_calendar_events` tool to query Google Calendar for the relevant date or period.
@@ -87,6 +93,20 @@ class LLMInterface:
             - If the user requests translation (e.g., "Translate text from image.png"), extract the text and translate it (e.g., to Russian).
             - If the text contains dates or event details (e.g., "Meeting 2025-07-20"), suggest creating a calendar event and ask for confirmation.
             - Handle errors gracefully and inform the user (e.g., "Failed to process image").
+        12. For requests related to speed test results (e.g., "Show my speed test results" or "What were my last tapping speed tests?"):
+            - Invoke the `get_speed_test_results` tool with user_id: {user_id}
+            - Do NOT ask the user for a user ID, as it is handled automatically.
+            - DO NOT reveal the user ID to user.
+            - The tool will return a formatted string with results, including stream speed, unstable rate, timestamp, taps, and time.
+            - If no results are found, inform the user (e.g., "No speed test results found for your account").
+            - If an error occurs, inform the user (e.g., "Failed to retrieve speed test results").
+            - Remember that Unstable rate (UR) is a measurement of variation of hit errors throughout a play. 
+            It is calculated as the standard deviation of hit errors, displayed in tenths of a millisecond. 
+            A lower UR indicates that the player's hits have more similar errors, while a higher UR indicates they are more spread apart.
+            - Example output:
+              "Here are your speed test results:
+               1. Timestamp: 2025-07-20T10:00:00, Stream Speed: 170 BPM, Unstable Rate: 125.4, Taps: 10, Time: 10 sec
+               2. Timestamp: 2025-07-19T15:30:00, Stream Speed: 200 BPM, Unstable Rate: 150.2, Taps: 12, Time: 13 sec"
 
         Example workflow for update/delete:
         - User: "Update the meeting"
@@ -94,9 +114,6 @@ class LLMInterface:
         - User: "Update event ID 14gngu8rb71tkam27fk1to08jv to start at 11:00"
         - Agent: Confirms, "Do you want to update 'Meeting A' (ID: 14gngu8rb71tkam27fk1to08jv) to start at 11:00 on 2025-07-15?" and proceeds only after confirmation.
         """
-
-        self.tools = [list_calendar_events, create_calendar_event, delete_calendar_event, update_calendar_event,
-                 read_from_image]
         if self.config.MISTRAL_API_KEY:
             self.mistral_llm = ChatMistralAI(api_key=self.config.MISTRAL_API_KEY, model="mistral-medium-latest")
             logger.info("Mistral fallback LLM initialized")
@@ -132,12 +149,28 @@ class LLMInterface:
             logger.error(f"Failed to create agent with LLM: {str(e)}")
             raise
 
-    def generate(self, question: str, history: List[Type[Message]],
-                 context: List[dict], language: str) -> str:
+    def generate(self, db: Session, question: str, history: List[Type[Message]],
+                 context: List[dict], language: str, user_id: Optional[int] = None,
+                 chat_id: Optional[int] = None) -> str:
+                 # calendar_id: str = "") -> str:
+        if not db:
+            raise ValueError("Database session is required")
+
+            # Проверка, что chat_id принадлежит user_id
+        if user_id is not None and chat_id is not None:
+            from src.backend.database import Chat
+            chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == user_id).first()
+            if not chat:
+                logger.error(f"Chat ID {chat_id} does not belong to user ID {user_id}")
+                raise HTTPException(status_code=403, detail="Chat does not belong to user")
+
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z")
 
         prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content=self.system_prompt.format(now=now)),
+            SystemMessage(content=self.system_prompt.format(now=now,
+                                                            user_id=user_id
+                                                            )),
+                                                            # calendar_id=calendar_id)),
             MessagesPlaceholder(variable_name="messages"),
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])

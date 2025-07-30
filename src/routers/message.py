@@ -19,10 +19,12 @@ router = APIRouter()
 @router.get("/chat_messages/{chat_id}")
 def get_chat_messages(chat_id: int, db: Session = Depends(
         get_db)) -> List[MessageGet]:
-    chat_messages = db.query(Message).filter(
+    chat_messages = (db.query(Message).filter(
         and_(
             Message.is_deleted == False,
-            Message.chat_id == chat_id)).all()
+            Message.chat_id == chat_id))
+                     .order_by(Message.id)
+                     .all())
     if len(chat_messages) == 0:
         raise HTTPException(status_code=404, detail="Chat messages not found")
     return chat_messages
