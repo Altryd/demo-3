@@ -6,7 +6,6 @@ import {
   Box,
   Paper,
   Avatar,
-  Typography,
   Chip,
   Stack,
 } from "@mui/material";
@@ -112,14 +111,12 @@ const AssistantMessage: React.FC<AssistantMessageProps> = ({
 interface ChatViewProps {
   messages: Message[];
   loading: boolean;
-  scrollContainerRef: React.RefObject<HTMLElement | null>;
   isBotThinking: boolean;
 }
 
 const ChatView: React.FC<ChatViewProps> = ({
   messages,
   loading,
-  scrollContainerRef,
   isBotThinking,
 }) => {
   const listRef = useRef<HTMLUListElement>(null);
@@ -185,7 +182,7 @@ const ChatView: React.FC<ChatViewProps> = ({
             !isInitialLoadRef.current &&
             !loading;
 
-          const paperMaxWidth = isUser ? "none" : "75%";
+          const paperMaxWidth = "75%";
           const uniqueContextFiles = msg.context
             ? Array.from(new Set(msg.context))
             : [];
@@ -207,16 +204,20 @@ const ChatView: React.FC<ChatViewProps> = ({
                   flexDirection: "row",
                   alignItems: "flex-end",
                   gap: `${gap}px`,
-                  width: "auto",
+                  width: "100%",
+                  justifyContent: isUser ? "flex-end" : "flex-start",
                 }}
               >
                 {!isUser && (
                   <Avatar
                     src={botAvatar}
-                    sx={{ width: avatarWidth, height: avatarWidth }}
+                    sx={{
+                      width: avatarWidth,
+                      height: avatarWidth,
+                      flexShrink: 0,
+                    }}
                   />
                 )}
-                {isUser && <Box sx={{ flexGrow: 1 }} />}
 
                 <Paper
                   elevation={3}
@@ -244,14 +245,53 @@ const ChatView: React.FC<ChatViewProps> = ({
                   )}
                 </Paper>
 
-                {!isUser && <Box sx={{ flexGrow: 1 }} />}
                 {isUser && (
                   <Avatar
                     src={userAvatar}
-                    sx={{ width: avatarWidth, height: avatarWidth }}
+                    sx={{
+                      width: avatarWidth,
+                      height: avatarWidth,
+                      flexShrink: 0,
+                    }}
                   />
                 )}
               </Box>
+
+              {msg.attachments && msg.attachments.length > 0 && (
+                <Stack
+                  direction="row"
+                  spacing={0.5}
+                  useFlexGap
+                  flexWrap="wrap"
+                  sx={{
+                    pl: !isUser ? `${avatarWidth + gap}px` : undefined,
+                    pr: isUser ? `${avatarWidth + gap}px` : undefined,
+                    maxWidth: paperMaxWidth,
+                    mt: 0.5,
+                    width: "auto",
+                  }}
+                >
+                  {msg.attachments.map((att) => (
+                    <Chip
+                      key={att.id}
+                      icon={<InsertDriveFileOutlinedIcon fontSize="small" />}
+                      label={att.file_name || "attachment"}
+                      size="small"
+                      variant="outlined"
+                      component="a"
+                      href={att.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      clickable
+                      sx={{
+                        fontFamily: "monospace",
+                        fontSize: "0.75rem",
+                        mt: 0.5,
+                      }}
+                    />
+                  ))}
+                </Stack>
+              )}
 
               {msg.role === "assistant" && uniqueContextFiles.length > 0 && (
                 <Stack

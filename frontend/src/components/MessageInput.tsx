@@ -14,17 +14,28 @@ import {
   DialogActions,
   Button,
   Paper,
+  Chip,
+  Stack,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import LinkIcon from "@mui/icons-material/Link";
-import CloseIcon from "@mui/icons-material/Close";
+//import CloseIcon from "@mui/icons-material/Close";
 import { animate } from "animejs";
+
+// --- НОВЫЙ ТИП: Определяем, что такое вложение на фронтенде ---
+export interface AttachmentFile {
+  id: string; // Уникальный ID для ключа в React
+  file?: File; // Для локальных файлов
+  url?: string; // Для ссылок
+  preview?: string; // Для превью изображений
+}
 
 interface MessageInputProps {
   chatId: number | null;
-  onSendMessage: (text: string) => void;
+  // --- ИЗМЕНЕНИЕ: onSendMessage теперь принимает массив вложений ---
+  onSendMessage: (text: string, attachments: AttachmentFile[]) => void;
   disabled?: boolean;
 }
 
@@ -41,36 +52,40 @@ const MessageInput: React.FC<MessageInputProps> = ({
   const [urlDialogOpen, setUrlDialogOpen] = useState(false);
   const [urlValue, setUrlValue] = useState("");
 
-  const [attachedFile, setAttachedFile] = useState<File | null>(null);
-  const [attachedFilePreview, setAttachedFilePreview] = useState<string | null>(
-    null
-  );
-  const [attachedUrl, setAttachedUrl] = useState<string | null>(null);
+  // --- ИЗМЕНЕНИЕ: Храним массив вложений ---
+  const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
 
+  // Очищаем URL превью при размонтировании
   useEffect(() => {
-
     return () => {
-      if (attachedFilePreview) {
-        URL.revokeObjectURL(attachedFilePreview);
-      }
+      attachments.forEach((att) => {
+        if (att.preview) {
+          URL.revokeObjectURL(att.preview);
+        }
+      });
     };
-  }, [attachedFilePreview]);
+  }, [attachments]);
 
-  const removeAttachment = useCallback(() => {
-    setAttachedFile(null);
-    setAttachedFilePreview(null);
-    setAttachedUrl(null);
+  // --- ИЗМЕНЕНИЕ: Функция для очистки всех вложений ---
+  const removeAllAttachments = useCallback(() => {
+    setAttachments([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-  }, []); 
+  }, []);
 
+  // --- ИЗМЕНЕНИЕ: Функция для удаления одного вложения по ID ---
+  const removeAttachment = (idToRemove: string) => {
+    setAttachments((prev) => prev.filter((att) => att.id !== idToRemove));
+  };
+
+  // Сбрасываем состояние при смене чата или при отключении
   useEffect(() => {
     if (!disabled) {
       setValue("");
-      removeAttachment();
+      removeAllAttachments();
     }
-  }, [chatId, disabled, removeAttachment]);
+  }, [chatId, disabled, removeAllAttachments]);
 
   const handleAttachmentClick = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -80,23 +95,35 @@ const MessageInput: React.FC<MessageInputProps> = ({
     setAnchorEl(null);
   };
 
+  // --- ИЗМЕНЕНИЕ: Обработка выбора нескольких файлов ---
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      removeAttachment(); // Сначала очищаем старое вложение
-      setAttachedFile(file);
-      if (file.type.startsWith("image/")) {
-        // Создаем новый URL для превью
-        setAttachedFilePreview(URL.createObjectURL(file));
-      }
+    const files = event.target.files;
+    if (files) {
+      const newAttachments: AttachmentFile[] = Array.from(files).map(
+        (file) => ({
+          id: `${file.name}-${file.lastModified}`,
+          file: file,
+          preview: file.type.startsWith("image/")
+            ? URL.createObjectURL(file)
+            : undefined,
+        })
+      );
+      setAttachments((prev) => [...prev, ...newAttachments]);
     }
     handleAttachmentClose();
+    // Сбрасываем значение инпута, чтобы можно было выбрать тот же файл снова
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   const handleUrlAttach = () => {
     if (urlValue.trim()) {
-      removeAttachment();
-      setAttachedUrl(urlValue.trim());
+      const newAttachment: AttachmentFile = {
+        id: `url-${Date.now()}`,
+        url: urlValue.trim(),
+      };
+      setAttachments((prev) => [...prev, newAttachment]);
     }
     setUrlDialogOpen(false);
     setUrlValue("");
@@ -104,10 +131,10 @@ const MessageInput: React.FC<MessageInputProps> = ({
   };
 
   const handleSend = () => {
-    if ((value.trim() || attachedFile || attachedUrl) && !disabled) {
-      onSendMessage(value.trim());
+    if ((value.trim() || attachments.length > 0) && !disabled) {
+      onSendMessage(value.trim(), attachments);
       setValue("");
-      removeAttachment();
+      removeAllAttachments();
     }
   };
 
@@ -132,48 +159,39 @@ const MessageInput: React.FC<MessageInputProps> = ({
   };
 
   const open = Boolean(anchorEl);
-  const hasAttachment = attachedFile || attachedUrl;
+  const hasAttachments = attachments.length > 0;
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-      {hasAttachment && (
+      {/* --- ИЗМЕНЕНИЕ: Отображение списка вложений --- */}
+      {hasAttachments && (
         <Paper
           variant="outlined"
           sx={{
             p: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
             borderColor: "primary.main",
             borderRadius: "12px",
           }}
         >
-          {attachedFilePreview && (
-            <Box
-              component="img"
-              src={attachedFilePreview}
-              alt="Preview"
-              sx={{
-                maxHeight: "50px",
-                maxWidth: "50px",
-                borderRadius: "8px",
-                mr: 1,
-              }}
-            />
-          )}
-          <ListItemText
-            primary={attachedFile?.name || "Прикреплена ссылка"}
-            secondary={attachedUrl}
-            primaryTypographyProps={{
-              noWrap: true,
-              sx: { fontWeight: "500" },
-            }}
-            secondaryTypographyProps={{ noWrap: true }}
-            sx={{ m: 0 }}
-          />
-          <IconButton onClick={removeAttachment} size="small">
-            <CloseIcon />
-          </IconButton>
+          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+            {attachments.map((att) => (
+              <Chip
+                key={att.id}
+                icon={
+                  att.preview ? (
+                    <img
+                      src={att.preview}
+                      alt="preview"
+                      height={24}
+                      style={{ borderRadius: "4px" }}
+                    />
+                  ) : undefined
+                }
+                label={att.file?.name || att.url}
+                onDelete={() => removeAttachment(att.id)}
+              />
+            ))}
+          </Stack>
         </Paper>
       )}
 
@@ -186,12 +204,14 @@ const MessageInput: React.FC<MessageInputProps> = ({
           top: "13px",
         }}
       >
+        {/* --- ИЗМЕНЕНИЕ: Добавлен атрибут multiple --- */}
         <input
           type="file"
           ref={fileInputRef}
           onChange={handleFileSelect}
           hidden
-          accept="image/*"
+          multiple
+          accept="image/*,application/pdf,.doc,.docx"
         />
         <IconButton
           onClick={handleAttachmentClick}
@@ -235,7 +255,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
         <IconButton
           color="primary"
           onClick={handleSend}
-          disabled={disabled || (!value.trim() && !hasAttachment)}
+          disabled={disabled || (!value.trim() && !hasAttachments)}
           ref={buttonRef}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}

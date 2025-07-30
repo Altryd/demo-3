@@ -23,8 +23,7 @@ def get_chat_messages(chat_id: int, db: Session = Depends(
         and_(
             Message.is_deleted == False,
             Message.chat_id == chat_id))
-                     .order_by(Message.id)
-                     .all())
+                    .order_by(Message.id).all())
     if len(chat_messages) == 0:
         raise HTTPException(status_code=404, detail="Chat messages not found")
     return chat_messages
