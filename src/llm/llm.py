@@ -142,6 +142,7 @@ class LLMInterface:
 
     @staticmethod
     def create_agent_executor(llm, tools, prompt):
+        """Create an AgentExecutor with the given LLM, tools, and prompt."""
         try:
             agent = create_tool_calling_agent(llm=llm, tools=tools, prompt=prompt)
             return AgentExecutor(agent=agent, tools=tools, verbose=True)
@@ -218,12 +219,12 @@ class LLMInterface:
     
         # --- НОВЫЙ АСИНХРОННЫЙ МЕТОД ---
     async def agenerate(self, question: str, history: List[Type[Message]],
-                        context: List[dict], language: str) -> str:
+                        user_id: int, context: List[dict], language: str) -> str:
         """Асинхронная версия метода generate."""
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z")
 
         prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content=self.system_prompt.format(now=now)),
+            SystemMessage(content=self.system_prompt.format(now=now, user_id=user_id)),
             MessagesPlaceholder(variable_name="messages"),
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])

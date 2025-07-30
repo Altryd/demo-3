@@ -172,7 +172,8 @@ Is the retrieved context relevant to the user's new question?""")
             if attachment_prompts:
                 question_for_llm += "\n" + "\n".join(attachment_prompts)
 
-            answer = await llm_interface.agenerate(question_for_llm, chat_history, context=[], language="")
+            answer = await llm_interface.agenerate(question_for_llm, chat_history, user_id=query.user_id,
+                                                   context=[], language="")
 
         chat = db.query(Chat).filter(
             Chat.id == query.chat_id,

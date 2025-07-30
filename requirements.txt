@@ -19,6 +19,7 @@ PyPDF2
 python-dotenv
 redis
 Requests
+sentence-transformers
 SQLAlchemy
 uvicorn
 Werkzeug
@@ -32,3 +33,4 @@ transformers
 datasets
 matplotlib
 mistralai
+hf_xet
