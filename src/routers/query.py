@@ -42,9 +42,7 @@ async def process_query(query: Query, db: Session = Depends(get_db)):
         chat_history = db.query(Message).filter(
             and_(
                 Message.is_deleted.is_(False),
-                Message.chat_id == query.chat_id)
-                        .order_by(Message.id)
-                        .all())
+                Message.chat_id == query.chat_id)).order_by(Message.id).all()
 
         newly_indexed_docs = []
         attachment_prompts = []
