@@ -20,7 +20,7 @@ class UserGet(BaseModel):
 class ChatGet(BaseModel):
     # Оставляем только новый синтаксис, удаляем старый class Config
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: int
     user_id: int
     summary: Optional[str] = None
@@ -121,7 +121,7 @@ class SpeedTestResultGet(BaseModel):
     chart_data: Optional[List[SpeedTestChartData]] = None
     timestamp: str
 
-        
+
 class SelectCalendarRequest(BaseModel):
     # Заменяем старый синтаксис на новый
     model_config = ConfigDict(from_attributes=True)

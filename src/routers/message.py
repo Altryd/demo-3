@@ -16,6 +16,7 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 
+
 @router.get("/chat_messages/{chat_id}")
 def get_chat_messages(chat_id: int, db: Session = Depends(
         get_db)) -> List[MessageGet]:
@@ -23,7 +24,7 @@ def get_chat_messages(chat_id: int, db: Session = Depends(
         and_(
             Message.is_deleted == False,
             Message.chat_id == chat_id))
-                    .order_by(Message.id).all())
+        .order_by(Message.id).all())
     if len(chat_messages) == 0:
         raise HTTPException(status_code=404, detail="Chat messages not found")
     return chat_messages
@@ -33,22 +34,27 @@ def get_chat_messages(chat_id: int, db: Session = Depends(
 def add_chat_message(message: MessagePost, db: Session = Depends(get_db)):
     if message.chat_id is None:
         chat = add_new_chat(
-                            ChatPost(
-                                    user_id=message.user_id,
-                                    summary=None),
-                            db)
+            ChatPost(
+                user_id=message.user_id,
+                summary=None),
+            db)
         if not chat:
-            raise HTTPException(status_code=500, detail="Problem while creating a chat")
+            raise HTTPException(
+                status_code=500,
+                detail="Problem while creating a chat")
     else:
         chat = db.query(Chat).filter(Chat.id == message.chat_id).first()
     if chat is None:
-        raise HTTPException(status_code=404, detail="Chat with provided id was not found")
+        raise HTTPException(status_code=404,
+                            detail="Chat with provided id was not found")
     try:
-        created_message = save_message(db, chat_id=chat.id, role=message.role, text=message.text)
-        #context_manager.save_context(user_id=message.user_id, role=message.role,
+        created_message = save_message(
+            db, chat_id=chat.id, role=message.role, text=message.text)
+        # context_manager.save_context(user_id=message.user_id, role=message.role,
         #                             text=message.text, chat_id=chat.id)
     except Exception as ex:
         db.rollback()
         logger.error(f"Exception while creating a message: {ex}")
-        raise HTTPException(status_code=500, detail="Problem while creating a message")
+        raise HTTPException(status_code=500,
+                            detail="Problem while creating a message")
     return created_message

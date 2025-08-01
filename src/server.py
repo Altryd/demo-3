@@ -1,25 +1,26 @@
 # uvicorn app.main:app --host localhost --port 8000 --reload
 
+from src.routers import health, speed_test, user, chat, message, query, google_calendar_oauth, attachment
+from src.utlis.logging_config import get_logger
+from contextlib import asynccontextmanager
+from src.backend.database import engine, get_db, create_postgres_tables
+from dotenv import load_dotenv
+from src.backend.database import User, Chat, Message, SpeedTestResult
+from src.config.config import Config
+from src.backend import database
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import and_
+from sqlalchemy.orm import Session
+from typing import List
+from fastapi import FastAPI, HTTPException, Depends
 import os
 os.environ['PGCLIENTENCODING'] = 'utf-8'
 
-from fastapi import FastAPI, HTTPException, Depends
-from typing import List
-from sqlalchemy.orm import Session
-from sqlalchemy import and_
-from fastapi.middleware.cors import CORSMiddleware
-from src.backend import database
-from src.config.config import Config
 # from app.context import ContextManager
 # from app.llm import LLMInterface
 # from app.models import UserGet, Query, ChatGet, MessageGet, MessagePost, ChatPost, QueryResponse, SpeedTestPayload, SpeedTestResultGet
-from src.backend.database import User, Chat, Message, SpeedTestResult
-from dotenv import load_dotenv
-from src.backend.database import engine, get_db, create_postgres_tables
 # from app.rag import RAGPipeline
 # from app.utility import detect_language, add_new_chat, save_message, generate_summary, format_history
-from contextlib import asynccontextmanager
-from src.utlis.logging_config import get_logger
 
 # импорты для PostgreSQL
 # from app.speed_database import get_postgres_db, create_postgres_tables
@@ -129,11 +130,12 @@ context_manager = ContextManager()
 logger = get_logger(__name__)
 
 # REGION UTILS
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
 
-from src.routers import health, speed_test, user, chat, message, query, google_calendar_oauth, attachment
 
 app.include_router(health.router)
 app.include_router(query.router)

@@ -29,7 +29,8 @@ async def upload_attachments(files: List[UploadFile] = File(...)):
         file_size = len(file_bytes)
         content_type = file.content_type
 
-        logger.info(f"Preparing to upload file: {filename}, size: {file_size}, type: {content_type}")
+        logger.info(
+            f"Preparing to upload file: {filename}, size: {file_size}, type: {content_type}")
 
         file_url = None
         if content_type and content_type.startswith("image/"):
@@ -37,7 +38,8 @@ async def upload_attachments(files: List[UploadFile] = File(...)):
             file_url = upload_to_imgbb(file_bytes=file_bytes)
         else:
             logger.info(f"'{filename}' is not an image. Uploading to temp.sh.")
-            file_url = upload_to_tempsh(file_bytes=file_bytes, filename=filename)
+            file_url = upload_to_tempsh(
+                file_bytes=file_bytes, filename=filename)
 
         # Если загрузка любого из файлов не удалась, прерываем операцию
         if not file_url:

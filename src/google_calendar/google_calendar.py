@@ -38,8 +38,10 @@ def get_google_calendar_service(user_id: int) -> tuple[any, any]:
             UserCalendar.is_active == True
         ).first()
         if not user_calendar:
-            logger.error(f"No active calendar credentials found for user_id={user_id}")
-            raise ValueError(f"No active calendar credentials found for user {user_id}")
+            logger.error(
+                f"No active calendar credentials found for user_id={user_id}")
+            raise ValueError(
+                f"No active calendar credentials found for user {user_id}")
         if not user_calendar.calendar_id:
             logger.error(f"No calendar_id found for user_id={user_id}")
             raise ValueError(f"No calendar_id found for user {user_id}")
@@ -53,17 +55,21 @@ def get_google_calendar_service(user_id: int) -> tuple[any, any]:
             scopes=Config.SCOPES
         )
         if credentials.expired and credentials.refresh_token:
-            logger.info(f"Access token expired for user_id={user_id}, refreshing...")
+            logger.info(
+                f"Access token expired for user_id={user_id}, refreshing...")
             credentials.refresh(Request())
             user_calendar.access_token = credentials.token
-            user_calendar.token_expiry = credentials.expiry.isoformat() if credentials.expiry else None
+            user_calendar.token_expiry = credentials.expiry.isoformat(
+            ) if credentials.expiry else None
             db.commit()
             logger.info(f"Tokens updated for user_id={user_id}")
-        return build('calendar', 'v3', credentials=credentials), user_calendar.calendar_id
+        return build('calendar', 'v3',
+                     credentials=credentials), user_calendar.calendar_id
 
 
 @tool
-def list_calendar_events(max_results: int = 10, user_id: Optional[int] = None, **kwargs) -> dict:
+def list_calendar_events(max_results: int = 10,
+                         user_id: Optional[int] = None, **kwargs) -> dict:
     """
     List upcoming events in the user's Google Calendar.
 
@@ -81,7 +87,8 @@ def list_calendar_events(max_results: int = 10, user_id: Optional[int] = None, *
     try:
         service, calendar_id = get_google_calendar_service(user_id)
         now = datetime.utcnow().isoformat() + 'Z'
-        logger.info(f"Fetching up to {max_results} events for user_id={user_id}, calendar_id={calendar_id}")
+        logger.info(
+            f"Fetching up to {max_results} events for user_id={user_id}, calendar_id={calendar_id}")
         events_result = service.events().list(
             calendarId=calendar_id,
             timeMin=now,
@@ -133,9 +140,11 @@ def create_calendar_event(
         Dict[str, Any]: A dictionary with a link to the event or an error message.
     """
     if not user_id:
-        return {"error": "user_id_missing", "message": "Error: No user_id provided in context"}
+        return {"error": "user_id_missing",
+                "message": "Error: No user_id provided in context"}
     if not start_datetime or not end_datetime:
-        return {"error": "missing_parameters", "message": "Error: start_datetime and end_datetime are required"}
+        return {"error": "missing_parameters",
+                "message": "Error: start_datetime and end_datetime are required"}
 
     try:
         service, calendar_id = get_google_calendar_service(user_id)
@@ -155,20 +164,26 @@ def create_calendar_event(
             },
         }
         event = service.events().insert(calendarId=calendar_id, body=event_body).execute()
-        logger.info(f"Event created for user_id={user_id}, calendar_id={calendar_id}: {event.get('htmlLink')}")
+        logger.info(
+            f"Event created for user_id={user_id}, calendar_id={calendar_id}: {event.get('htmlLink')}")
         return {"status": "success", "event_link": event.get('htmlLink')}
     except HttpError as e:
         logger.error(f"Error creating event for user_id={user_id}: {e}")
         if e.resp.status == 403:
-            return {"error": "permission_denied", "message": "You do not have writer access to this calendar."}
-        return {"error": "api_error", "message": f"An API error occurred: {str(e)}"}
+            return {"error": "permission_denied",
+                    "message": "You do not have writer access to this calendar."}
+        return {"error": "api_error",
+                "message": f"An API error occurred: {str(e)}"}
     except Exception as e:
-        logger.error(f"Unexpected error creating event for user_id={user_id}: {e}")
-        return {"error": "unknown_error", "message": f"An unexpected error occurred: {str(e)}"}
+        logger.error(
+            f"Unexpected error creating event for user_id={user_id}: {e}")
+        return {"error": "unknown_error",
+                "message": f"An unexpected error occurred: {str(e)}"}
 
 
 @tool
-def delete_calendar_event(event_id: str, user_id: Optional[int], **kwargs) -> Dict[str, str]:
+def delete_calendar_event(
+        event_id: str, user_id: Optional[int], **kwargs) -> Dict[str, str]:
     """
     Delete an event from the user's Google Calendar.
 
@@ -180,23 +195,32 @@ def delete_calendar_event(event_id: str, user_id: Optional[int], **kwargs) -> Di
         Dict[str, str]: A dictionary with a confirmation message or an error.
     """
     if not user_id:
-        return {"error": "user_id_missing", "message": "Error: No user_id provided in context"}
+        return {"error": "user_id_missing",
+                "message": "Error: No user_id provided in context"}
 
     try:
         service, calendar_id = get_google_calendar_service(user_id)
         service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
-        logger.info(f"Event with ID {event_id} deleted for user_id={user_id}, calendar_id={calendar_id}")
-        return {"status": "success", "message": f"Event with ID {event_id} successfully deleted!"}
+        logger.info(
+            f"Event with ID {event_id} deleted for user_id={user_id}, calendar_id={calendar_id}")
+        return {"status": "success",
+                "message": f"Event with ID {event_id} successfully deleted!"}
     except HttpError as e:
-        logger.error(f"Error deleting event {event_id} for user_id={user_id}: {e}")
+        logger.error(
+            f"Error deleting event {event_id} for user_id={user_id}: {e}")
         if e.resp.status == 403:
-            return {"error": "permission_denied", "message": "You do not have writer access to this calendar."}
+            return {"error": "permission_denied",
+                    "message": "You do not have writer access to this calendar."}
         if e.resp.status == 404:
-            return {"error": "not_found", "message": "The event to delete was not found."}
-        return {"error": "api_error", "message": f"An API error occurred: {str(e)}"}
+            return {"error": "not_found",
+                    "message": "The event to delete was not found."}
+        return {"error": "api_error",
+                "message": f"An API error occurred: {str(e)}"}
     except Exception as e:
-        logger.error(f"Unexpected error deleting event {event_id} for user_id={user_id}: {e}")
-        return {"error": "unknown_error", "message": f"An unexpected error occurred: {str(e)}"}
+        logger.error(
+            f"Unexpected error deleting event {event_id} for user_id={user_id}: {e}")
+        return {"error": "unknown_error",
+                "message": f"An unexpected error occurred: {str(e)}"}
 
 
 @tool
@@ -228,39 +252,64 @@ def update_calendar_event(
         Dict[str, Any]: A dictionary with a confirmation message or an error.
     """
     if not user_id:
-        return {"error": "user_id_missing", "message": "Error: No user_id provided in context"}
+        return {"error": "user_id_missing",
+                "message": "Error: No user_id provided in context"}
 
     try:
         service, calendar_id = get_google_calendar_service(user_id)
-        
-        current_event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
-        
+
+        current_event = service.events().get(
+            calendarId=calendar_id, eventId=event_id).execute()
+
         update_body = {}
-        if summary is not None: update_body['summary'] = summary
-        if location is not None: update_body['location'] = location
-        if description is not None: update_body['description'] = description
-        if start_datetime is not None: update_body['start'] = {'dateTime': start_datetime, 'timeZone': 'Europe/Samara'}
-        if end_datetime is not None: update_body['end'] = {'dateTime': end_datetime, 'timeZone': 'Europe/Samara'}
-        if attendees is not None: update_body['attendees'] = [{'email': email} for email in attendees]
+        if summary is not None:
+            update_body['summary'] = summary
+        if location is not None:
+            update_body['location'] = location
+        if description is not None:
+            update_body['description'] = description
+        if start_datetime is not None:
+            update_body['start'] = {
+                'dateTime': start_datetime,
+                'timeZone': 'Europe/Samara'}
+        if end_datetime is not None:
+            update_body['end'] = {
+                'dateTime': end_datetime,
+                'timeZone': 'Europe/Samara'}
+        if attendees is not None:
+            update_body['attendees'] = [{'email': email}
+                                        for email in attendees]
 
         if not update_body:
-            return {"error": "no_updates_provided", "message": f"No updates provided for event with ID {event_id}"}
+            return {"error": "no_updates_provided",
+                    "message": f"No updates provided for event with ID {event_id}"}
 
         updated_event_body = {**current_event, **update_body}
-        
-        updated_event = service.events().update(calendarId=calendar_id, eventId=event_id, body=updated_event_body).execute()
-        logger.info(f"Event with ID {event_id} updated for user_id={user_id}, calendar_id={calendar_id}")
-        return {"status": "success", "message": f"Event with ID {event_id} successfully updated!", "event_link": updated_event.get('htmlLink')}
+
+        updated_event = service.events().update(
+            calendarId=calendar_id,
+            eventId=event_id,
+            body=updated_event_body).execute()
+        logger.info(
+            f"Event with ID {event_id} updated for user_id={user_id}, calendar_id={calendar_id}")
+        return {"status": "success", "message": f"Event with ID {event_id} successfully updated!",
+                "event_link": updated_event.get('htmlLink')}
     except HttpError as e:
-        logger.error(f"Error updating event {event_id} for user_id={user_id}: {e}")
+        logger.error(
+            f"Error updating event {event_id} for user_id={user_id}: {e}")
         if e.resp.status == 403:
-            return {"error": "permission_denied", "message": "You do not have writer access to this calendar."}
+            return {"error": "permission_denied",
+                    "message": "You do not have writer access to this calendar."}
         if e.resp.status == 404:
-            return {"error": "not_found", "message": "The event to update was not found."}
-        return {"error": "api_error", "message": f"An API error occurred: {str(e)}"}
+            return {"error": "not_found",
+                    "message": "The event to update was not found."}
+        return {"error": "api_error",
+                "message": f"An API error occurred: {str(e)}"}
     except Exception as e:
-        logger.error(f"Unexpected error updating event {event_id} for user_id={user_id}: {e}")
-        return {"error": "unknown_error", "message": f"An unexpected error occurred: {str(e)}"}
+        logger.error(
+            f"Unexpected error updating event {event_id} for user_id={user_id}: {e}")
+        return {"error": "unknown_error",
+                "message": f"An unexpected error occurred: {str(e)}"}
 
 
 if __name__ == "__main__":

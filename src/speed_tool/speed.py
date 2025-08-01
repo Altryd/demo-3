@@ -56,10 +56,12 @@ def get_speed_test_results(user_id: int) -> str:
                     f"Taps: {res['taps']}, "
                     f"Time: {res['time']} sec\n"
                 )
-            logger.info(f"Successfully retrieved {len(response_list)} speed test results for user_id={user_id}")
+            logger.info(
+                f"Successfully retrieved {len(response_list)} speed test results for user_id={user_id}")
             return formatted
         except Exception as e:
-            logger.error(f"Error retrieving speed test results for user_id={user_id}: {e}")
+            logger.error(
+                f"Error retrieving speed test results for user_id={user_id}: {e}")
             return "Error: Could not retrieve speed test results."
 
 
@@ -75,7 +77,8 @@ if __name__ == "__main__":
                     .all()
                 )
                 if not results:
-                    return {"message": "No speed test results found for your account."}
+                    return {
+                        "message": "No speed test results found for your account."}
                 response_list = []
                 for res in results:
                     res_dict = {

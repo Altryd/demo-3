@@ -35,7 +35,8 @@ def save_speed_test_result(
     except Exception as e:
         db.rollback()
         logger.error(f"Error saving speed test result: {e}")
-        raise HTTPException(status_code=500, detail="Could not save speed test result.")
+        raise HTTPException(status_code=500,
+                            detail="Could not save speed test result.")
 
 
 @router.get("/speed-test/{user_id}", response_model=List[SpeedTestResultGet])
@@ -57,4 +58,5 @@ def get_speed_test_results_for_user(
         return response_list
     except Exception as e:
         logger.error(f"Error getting speed test results: {e}")
-        raise HTTPException(status_code=500, detail="Could not retrieve speed test results.")
+        raise HTTPException(status_code=500,
+                            detail="Could not retrieve speed test results.")

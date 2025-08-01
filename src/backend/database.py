@@ -40,10 +40,17 @@ class Chat(Base):
         nullable=False)
     summary = Column(String(255), nullable=True)
 
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at = Column(
+        DateTime(
+            timezone=True),
+        server_default=func.now(),
+        nullable=False)
 
     user = relationship("User", back_populates="chats")
-    messages = relationship("Message", back_populates="chat", cascade="all, delete-orphan")
+    messages = relationship(
+        "Message",
+        back_populates="chat",
+        cascade="all, delete-orphan")
     is_deleted = Column(Boolean, default=False, nullable=False)
 
 
@@ -59,7 +66,10 @@ class Message(Base):
     text = Column(Text, nullable=False)
     role = Column(Enum(Role), nullable=False)
     chat = relationship("Chat", back_populates="messages")
-    attachments = relationship("Attachment", back_populates="message", cascade="all, delete-orphan")
+    attachments = relationship(
+        "Attachment",
+        back_populates="message",
+        cascade="all, delete-orphan")
     is_deleted = Column(Boolean, default=False, nullable=False)
     # --- хранения контекста ---
     context = Column(JSON, nullable=True)
@@ -68,13 +78,18 @@ class Message(Base):
 class Attachment(Base):
     __tablename__ = "attachment"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    message_id = Column(Integer, ForeignKey("message.id", ondelete="CASCADE"), nullable=False)
-    
+    message_id = Column(
+        Integer,
+        ForeignKey(
+            "message.id",
+            ondelete="CASCADE"),
+        nullable=False)
+
     url = Column(String(255), nullable=False)
     file_name = Column(String(255), nullable=True)
     file_type = Column(String(100), nullable=True)
     file_size = Column(Integer, nullable=True)
-    
+
     message = relationship("Message", back_populates="attachments")
     is_deleted = Column(Boolean, default=False, nullable=False)
 
@@ -98,10 +113,14 @@ class SpeedTestResult(Base):
     user = relationship("User", back_populates="speed_results")
     taps = Column(Integer, nullable=False)
     time = Column(Float, nullable=False)
-    stream_speed = Column(Float, nullable=False) # BPM
+    stream_speed = Column(Float, nullable=False)  # BPM
     unstable_rate = Column(Float, nullable=False)
     chart_data = Column(JSON, nullable=True)
-    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    timestamp = Column(
+        DateTime(
+            timezone=True),
+        server_default=func.now(),
+        nullable=False)
 
 
 class UserCalendar(Base):
@@ -127,7 +146,10 @@ postgres_engine = create_engine(
     echo=True
 )
 
-PostgresSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=postgres_engine)
+PostgresSessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=postgres_engine)
 
 
 def get_db():

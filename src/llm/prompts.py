@@ -36,12 +36,12 @@ SYSTEM_PROMPT_CALENDAR = """
         4. For schedule-related requests (e.g., "What's my schedule tomorrow?"):
            - Use the `list_calendar_events` tool to query Google Calendar for the relevant date or period.
            - Present the events in a clear, concise format, including titles, dates, times, and event IDs.
-        5. For vague requests, ask clarifying questions (e.g., "Which date or time range would you like to check?").																	 
+        5. For vague requests, ask clarifying questions (e.g., "Which date or time range would you like to check?").
         6. Ensure all dates and times are interpreted relative to {now} in the UTC+4 timezone unless otherwise specified.
         7. If an error occurs (e.g., no access to Google Calendar), inform the user politely and suggest checking the connection.
         8. Event IDs are strings like '14gngu8rb71tkam27fk1to08jv' or '35gc50jmu343lm0jga3adge1or'. Never generate or assume an event ID without fetching it via `list_calendar_events`.
         10. If the user provides incomplete details for creating or updating an event, prompt for missing information before proceeding.
-        
+
         Example workflow for update/delete:
         - User: "Update the meeting"
         - Agent: Invokes `list_calendar_events`, shows events (e.g., "1. Meeting A, 2025-07-15 10:00, ID: 14gngu8rb71tkam27fk1to08jv"), asks, "Which event would you like to update? Please provide the event ID or title and the changes."
@@ -50,7 +50,7 @@ SYSTEM_PROMPT_CALENDAR = """
 """
 
 SYSTEM_PROMPT_OCR = """
-11. Use the `read_from_image` tool to extract text from images. The tool accepts a local image path or URL and a list of languages (e.g., ['en', 'ja']). 
+11. Use the `read_from_image` tool to extract text from images. The tool accepts a local image path or URL and a list of languages (e.g., ['en', 'ja']).
             - If the user requests translation (e.g., "Translate text from image.png"), extract the text and translate it (e.g., to Russian).
             - If the text contains dates or event details (e.g., "Meeting 2025-07-20"), suggest creating a calendar event and ask for confirmation.
             - Handle errors gracefully and inform the user (e.g., "Failed to process image").
@@ -64,8 +64,8 @@ SYSTEM_PROMPT_SPEED_TEST = """
             - The tool will return a formatted string with results, including stream speed, unstable rate, timestamp, taps, and time.
             - If no results are found, inform the user (e.g., "No speed test results found for your account").
             - If an error occurs, inform the user (e.g., "Failed to retrieve speed test results").
-            - Remember that Unstable rate (UR) is a measurement of variation of hit errors throughout a play. 
-            It is calculated as the standard deviation of hit errors, displayed in tenths of a millisecond. 
+            - Remember that Unstable rate (UR) is a measurement of variation of hit errors throughout a play.
+            It is calculated as the standard deviation of hit errors, displayed in tenths of a millisecond.
             A lower UR indicates that the player's hits have more similar errors, while a higher UR indicates they are more spread apart.
             - Example output:
               "Here are your speed test results:

@@ -29,8 +29,10 @@ def read_from_image_easyocr(image_path: str, languages: List[str] = ['en']):
     """
 
     try:
-        if not languages or not all(isinstance(lang, str) for lang in languages):
-            raise ValueError("Languages must be a non-empty list of strings, e.g., ['en', 'ru'].")
+        if not languages or not all(isinstance(lang, str)
+                                    for lang in languages):
+            raise ValueError(
+                "Languages must be a non-empty list of strings, e.g., ['en', 'ru'].")
         if image_path.startswith(('http://', 'https://')):
             logger.info(f"Downloading image from URL: {image_path}")
             response = requests.get(image_path, timeout=10)
@@ -61,10 +63,12 @@ def read_from_image_easyocr(image_path: str, languages: List[str] = ['en']):
         return {"error": str(e), "status": "error"}
     except Exception as e:
         logger.error(f"Unexpected error in OCR: {e}")
-        return {"error": f"Exception occurred while reading text: {e}", "status": "error"}
+        return {"error": f"Exception occurred while reading text: {e}",
+                "status": "error"}
 
 
 _mistral_client = None
+
 
 def get_mistral_client():
     global _mistral_client
@@ -80,7 +84,8 @@ def mistral_ocr(image_path: str) -> dict:
     client = get_mistral_client()
     try:
         if image_path.startswith(('http://', 'https://')):
-            if image_path.startswith('http://'):  # TODO: that's a cringe fix but it is that it is..
+            # TODO: that's a cringe fix but it is that it is..
+            if image_path.startswith('http://'):
                 image_path = image_path.replace('http://', 'https://')
             ocr_response = client.ocr.process(
                 model="mistral-ocr-latest",
@@ -89,10 +94,13 @@ def mistral_ocr(image_path: str) -> dict:
             )
         else:
             with open(image_path, "rb") as image_file:
-                base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+                base64_image = base64.b64encode(
+                    image_file.read()).decode('utf-8')
                 ocr_response = client.ocr.process(
                     model="mistral-ocr-latest",
-                    document={"type": "image_url", "image_url": f"data:image/png;base64,{base64_image}"},
+                    document={
+                        "type": "image_url",
+                        "image_url": f"data:image/png;base64,{base64_image}"},
                     include_image_base64=True
                 )
         text = "No text detected."
@@ -101,6 +109,7 @@ def mistral_ocr(image_path: str) -> dict:
         return {"text": text, "status": "success"}
     except Exception as e:
         return {"error": f"Mistral OCR error: {str(e)}", "status": "error"}
+
 
 @tool
 def read_from_image(image_path: str, languages: List[str] = ['en']):
@@ -123,13 +132,15 @@ def read_from_image(image_path: str, languages: List[str] = ['en']):
         if easy_result["status"] == "success" and easy_result["text"].strip():
             text = easy_result["text"]
         else:
-            logger.error(f"Both OCR methods failed for the image: {image_path}")
+            logger.error(
+                f"Both OCR methods failed for the image: {image_path}")
             return {"error": "Both OCR methods failed.", "status": "error"}
     return {"text": text, "status": "success"}
 
 
 if __name__ == "__main__":
     mistral_res = mistral_ocr("http://0x0.st/8dY5.png")
-    result = read_from_image.invoke("http://0x0.st/8dY5.png", languages=['ru', 'en'])
+    result = read_from_image.invoke(
+        "http://0x0.st/8dY5.png", languages=['ru', 'en'])
     print(result)
     print(f"mistral_res: {mistral_res}")

@@ -30,7 +30,7 @@ def get_all_user_chats(db: Session = Depends(get_db)) -> List[ChatGet]:
 
 @router.get("/user_chats/{user_id}")
 def get_user_chats(user_id: int, db: Session = Depends(
-    get_db)) -> List[ChatGet]:
+        get_db)) -> List[ChatGet]:
     user_chats = db.query(Chat).filter(
         and_(
             Chat.is_deleted == False,
@@ -45,7 +45,9 @@ def delete_chat(chat_id: int, db: Session = Depends(get_db)):
     """
     Помечает чат и все его сообщения как удаленные (мягкое удаление).
     """
-    db_chat = db.query(Chat).filter(Chat.id == chat_id, Chat.is_deleted == False).first()
+    db_chat = db.query(Chat).filter(
+        Chat.id == chat_id,
+        Chat.is_deleted == False).first()
 
     if not db_chat:
         raise HTTPException(status_code=404, detail="Chat not found")
@@ -53,10 +55,12 @@ def delete_chat(chat_id: int, db: Session = Depends(get_db)):
     try:
         db_chat.is_deleted = True
 
-        db.query(Message).filter(Message.chat_id == chat_id).update({"is_deleted": True})
+        db.query(Message).filter(Message.chat_id ==
+                                 chat_id).update({"is_deleted": True})
 
         db.commit()
-        logger.info(f"Chat with id {chat_id} and its messages marked as deleted.")
+        logger.info(
+            f"Chat with id {chat_id} and its messages marked as deleted.")
         return {"message": f"Chat {chat_id} deleted successfully"}
     except Exception as e:
         db.rollback()
