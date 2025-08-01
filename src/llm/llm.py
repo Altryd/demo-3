@@ -144,7 +144,6 @@ class LLMInterface:
             logger.error(f"Unexpected error in generate: {e}")
             return f"An unexpected error occurred while processing your request: {str(e)}"
     
-        # --- НОВЫЙ АСИНХРОННЫЙ МЕТОД ---
     async def agenerate(self, question: str, history: List[Type[Message]],
                         user_id: int, context: List[dict], language: str) -> str:
         """Асинхронная версия метода generate."""
@@ -261,3 +260,4 @@ if __name__ == "__main__":
                 break
             llm_interface.generate(user_input, chat_messages, [], "en")
             print("pass")
+            

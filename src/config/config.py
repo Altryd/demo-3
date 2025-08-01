@@ -8,7 +8,13 @@ class Config:
     # Google envs
     GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
     GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-    SCOPES = ['https://www.googleapis.com/auth/calendar']
+    SCOPES = [
+        'https://www.googleapis.com/auth/calendar',
+        'https://www.googleapis.com/auth/tasks.readonly',
+        'openid', # Стандарт для аутентификации
+        'https://www.googleapis.com/auth/userinfo.email', # Доступ к email
+        'https://www.googleapis.com/auth/userinfo.profile' # Доступ к имени и аватару
+    ]
     REDIRECT_URI = "http://localhost:8000/auth/callback"  # Настроить если нужно потом релизнуть куда-то
 
 
@@ -29,7 +35,7 @@ class Config:
     MODEL_PROVIDER = os.getenv("MODEL_PROVIDER", "openrouter").lower()
     OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-    OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free")  # Default OpenRouter model
+    OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free")
     OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
     LLM_API_KEY = os.getenv("KIMI_API_KEY")
@@ -54,4 +60,4 @@ class Config:
     FT_DIR = "fine-tuning/dataset"
 
     # frontend network
-    FRONTEND_ADDRESS = "http://localhost:5173/"
+    FRONTEND_ADDRESS = "http://localhost:5173"

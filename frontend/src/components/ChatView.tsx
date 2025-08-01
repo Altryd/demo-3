@@ -1,4 +1,10 @@
-import React, { useEffect, useRef, useState, memo } from "react";
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  memo,
+  useLayoutEffect,
+} from "react";
 import {
   List,
   ListItem,
@@ -9,7 +15,12 @@ import {
   Chip,
   Stack,
 } from "@mui/material";
-import { animate, stagger } from "animejs";
+import {
+  motion,
+  AnimatePresence,
+  type Transition,
+  type Variants,
+} from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import type { Message } from "../services/api";
 
@@ -30,20 +41,22 @@ const markdownStyles = {
 };
 
 const ThinkingIndicator: React.FC = () => {
-  const dotsRef = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (dotsRef.current) {
-      animate(dotsRef.current.children, {
-        opacity: [0.2, 1],
-        translateY: [-2, 0],
-        duration: 400,
-        delay: stagger(150),
-        loop: true,
-        direction: "alternate",
-        easing: "easeInOutQuad",
-      });
-    }
-  }, []);
+  const dotVariants = {
+    initial: {
+      y: 0,
+    },
+    animate: {
+      y: -4,
+    },
+  };
+
+  const transition: Transition = {
+    duration: 0.4,
+    repeat: Infinity,
+    repeatType: "reverse",
+    ease: "easeInOut",
+  };
+
   return (
     <ListItem
       sx={{
@@ -53,6 +66,7 @@ const ThinkingIndicator: React.FC = () => {
         gap: 1.5,
         mb: 1,
         justifyContent: "flex-start",
+        px: 0,
       }}
     >
       <Avatar src={botAvatar} sx={{ width: 40, height: 40 }} />
@@ -65,20 +79,30 @@ const ThinkingIndicator: React.FC = () => {
           maxWidth: "75%",
         }}
       >
-        <Box ref={dotsRef} sx={{ display: "flex", gap: "4px" }}>
+        <motion.div
+          style={{ display: "flex", gap: "4px" }}
+          initial="initial"
+          animate="animate"
+        >
           {[...Array(3)].map((_, i) => (
-            <Box
+            <motion.div
               key={i}
-              component="span"
-              sx={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                bgcolor: "text.secondary",
-              }}
-            />
+              variants={dotVariants}
+              transition={{ ...transition, delay: i * 0.15 }}
+            >
+              <Box
+                component="span"
+                sx={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  bgcolor: "text.secondary",
+                  display: "block",
+                }}
+              />
+            </motion.div>
           ))}
-        </Box>
+        </motion.div>
       </Paper>
       <Box sx={{ flexGrow: 1 }} />
     </ListItem>
@@ -88,10 +112,12 @@ const ThinkingIndicator: React.FC = () => {
 interface AssistantMessageProps {
   text: string;
   onCharacterTyped: () => void;
+  onTypingComplete: () => void;
 }
 const AssistantMessage: React.FC<AssistantMessageProps> = ({
   text,
   onCharacterTyped,
+  onTypingComplete,
 }) => {
   const [displayedText, setDisplayedText] = useState("");
   useEffect(() => {
@@ -101,10 +127,13 @@ const AssistantMessage: React.FC<AssistantMessageProps> = ({
       setDisplayedText(text.substring(0, i + 1));
       onCharacterTyped();
       i++;
-      if (i >= text.length) clearInterval(interval);
+      if (i >= text.length) {
+        clearInterval(interval);
+        onTypingComplete();
+      }
     }, 5);
     return () => clearInterval(interval);
-  }, [text, onCharacterTyped]);
+  }, [text, onCharacterTyped, onTypingComplete]);
   return <ReactMarkdown>{displayedText}</ReactMarkdown>;
 };
 
@@ -112,56 +141,63 @@ interface ChatViewProps {
   messages: Message[];
   loading: boolean;
   isBotThinking: boolean;
+  messageIdToAnimate: number | null;
+  onAnimationComplete: () => void;
+  isAnimationEnabled: boolean;
 }
 
 const ChatView: React.FC<ChatViewProps> = ({
   messages,
   loading,
   isBotThinking,
+  messageIdToAnimate,
+  onAnimationComplete,
+  isAnimationEnabled,
 }) => {
-  const listRef = useRef<HTMLUListElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const isInitialLoadRef = useRef(true);
-
-  useEffect(() => {
-    if (loading) isInitialLoadRef.current = true;
-  }, [loading]);
+  const hasScrolledUp = useRef(false);
+  const listContainerRef = useRef<HTMLUListElement | null>(null);
 
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
-    messagesEndRef.current?.scrollIntoView({ behavior });
-  };
-
-  const handleTypingScroll = () => {
-    scrollToBottom("auto");
+    scrollRef.current?.scrollIntoView({ behavior, block: "end" });
   };
 
   useEffect(() => {
-    if (!loading && listRef.current) {
-      const messageElements = listRef.current.querySelectorAll(".chat-message");
-      const lastMessage = messageElements[messageElements.length - 1];
-      if (lastMessage && !lastMessage.classList.contains("animated")) {
-        lastMessage.classList.add("animated");
-        animate(lastMessage, {
-          opacity: [0, 1],
-          translateY: [20, 0],
-          duration: 400,
-          easing: "easeOutQuad",
-        });
+    const container = listContainerRef.current?.parentElement;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      if (scrollHeight - scrollTop - clientHeight > 50) {
+        hasScrolledUp.current = true;
+      } else {
+        hasScrolledUp.current = false;
       }
+    };
+
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (isInitialLoadRef.current && messages.length > 0) {
+      scrollToBottom("auto");
+      isInitialLoadRef.current = false;
+      return;
     }
 
-    if (messages.length > 0) {
-      scrollToBottom(isInitialLoadRef.current ? "auto" : "smooth");
+    if (!hasScrolledUp.current) {
+      scrollToBottom("smooth");
     }
-
-    if (!loading) isInitialLoadRef.current = false;
-  }, [messages, loading]);
+  }, [messages, isBotThinking]);
 
   useEffect(() => {
-    if (isBotThinking) {
-      scrollToBottom();
+    if (messages.length === 0) {
+      isInitialLoadRef.current = true;
+      hasScrolledUp.current = false;
     }
-  }, [isBotThinking]);
+  }, [messages.length]);
 
   if (loading && messages.length === 0 && !isBotThinking) {
     return <CircularProgress sx={{ m: 2, display: "block", margin: "auto" }} />;
@@ -173,161 +209,188 @@ const ChatView: React.FC<ChatViewProps> = ({
 
   return (
     <Box sx={{ p: 2 }}>
-      <List ref={listRef}>
-        {messages.map((msg, index) => {
-          const isUser = msg.role === "user";
-          const shouldAnimateTyping =
-            msg.role === "assistant" &&
-            index === messages.length - 1 &&
-            !isInitialLoadRef.current &&
-            !loading;
+      <List ref={listContainerRef}>
+        <AnimatePresence initial={false}>
+          {messages.map((msg) => {
+            const isUser = msg.role === "user";
+            const shouldAnimateTyping = msg.id === messageIdToAnimate;
 
-          const paperMaxWidth = "75%";
-          const uniqueContextFiles = msg.context
-            ? Array.from(new Set(msg.context))
-            : [];
+            const paperMaxWidth = "75%";
+            const uniqueContextFiles = msg.context
+              ? Array.from(new Set(msg.context))
+              : [];
 
-          return (
-            <ListItem
-              key={`${msg.id}-${index}-${msg.role}`}
-              className="chat-message"
-              sx={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: isUser ? "flex-end" : "flex-start",
-                mb: 1,
-              }}
-            >
-              <Box
-                sx={{
-                  display: "flex",
-                  flexDirection: "row",
-                  alignItems: "flex-end",
-                  gap: `${gap}px`,
-                  width: "100%",
-                  justifyContent: isUser ? "flex-end" : "flex-start",
-                }}
+            return (
+              <motion.div
+                key={msg.id}
+                layout
+                style={{ willChange: "transform" }}
               >
-                {!isUser && (
-                  <Avatar
-                    src={botAvatar}
+                <motion.div
+                  initial={
+                    isAnimationEnabled
+                      ? { opacity: 0, y: 20 }
+                      : { opacity: 1, y: 0 }
+                  }
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, ease: "easeOut" }}
+                >
+                  <ListItem
                     sx={{
-                      width: avatarWidth,
-                      height: avatarWidth,
-                      flexShrink: 0,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: isUser ? "flex-end" : "flex-start",
+                      mb: 1,
+                      px: 0,
                     }}
-                  />
-                )}
-
-                <Paper
-                  elevation={3}
-                  sx={{
-                    p: "10px 15px",
-                    borderRadius: isUser
-                      ? "20px 20px 5px 20px"
-                      : "20px 20px 20px 5px",
-                    backgroundColor: isUser
-                      ? "primary.main"
-                      : "background.paper",
-                    color: isUser ? "primary.contrastText" : "text.primary",
-                    maxWidth: paperMaxWidth,
-                    wordBreak: "break-word",
-                    ...markdownStyles,
-                  }}
-                >
-                  {shouldAnimateTyping ? (
-                    <AssistantMessage
-                      text={msg.text}
-                      onCharacterTyped={handleTypingScroll}
-                    />
-                  ) : (
-                    <ReactMarkdown>{msg.text}</ReactMarkdown>
-                  )}
-                </Paper>
-
-                {isUser && (
-                  <Avatar
-                    src={userAvatar}
-                    sx={{
-                      width: avatarWidth,
-                      height: avatarWidth,
-                      flexShrink: 0,
-                    }}
-                  />
-                )}
-              </Box>
-
-              {msg.attachments && msg.attachments.length > 0 && (
-                <Stack
-                  direction="row"
-                  spacing={0.5}
-                  useFlexGap
-                  flexWrap="wrap"
-                  sx={{
-                    pl: !isUser ? `${avatarWidth + gap}px` : undefined,
-                    pr: isUser ? `${avatarWidth + gap}px` : undefined,
-                    maxWidth: paperMaxWidth,
-                    mt: 0.5,
-                    width: "auto",
-                  }}
-                >
-                  {msg.attachments.map((att) => (
-                    <Chip
-                      key={att.id}
-                      icon={<InsertDriveFileOutlinedIcon fontSize="small" />}
-                      label={att.file_name || "attachment"}
-                      size="small"
-                      variant="outlined"
-                      component="a"
-                      href={att.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      clickable
+                  >
+                    <Box
                       sx={{
-                        fontFamily: "monospace",
-                        fontSize: "0.75rem",
-                        mt: 0.5,
+                        display: "flex",
+                        flexDirection: "row",
+                        alignItems: "flex-end",
+                        gap: `${gap}px`,
+                        width: "100%",
+                        justifyContent: isUser ? "flex-end" : "flex-start",
                       }}
-                    />
-                  ))}
-                </Stack>
-              )}
+                    >
+                      {!isUser && (
+                        <Avatar
+                          src={botAvatar}
+                          sx={{
+                            width: avatarWidth,
+                            height: avatarWidth,
+                            flexShrink: 0,
+                          }}
+                        />
+                      )}
 
-              {msg.role === "assistant" && uniqueContextFiles.length > 0 && (
-                <Stack
-                  direction="row"
-                  spacing={0.5}
-                  useFlexGap
-                  flexWrap="wrap"
-                  sx={{
-                    pl: !isUser ? `${avatarWidth + gap}px` : undefined,
-                    pr: isUser ? `${avatarWidth + gap}px` : undefined,
-                    maxWidth: paperMaxWidth,
-                    mt: 0.5,
-                    width: "auto",
-                  }}
-                >
-                  {uniqueContextFiles.map((fileName, idx) => (
-                    <Chip
-                      key={`${msg.id}-ctx-${idx}`}
-                      icon={<InsertDriveFileOutlinedIcon fontSize="small" />}
-                      label={fileName.split(/[/\\]/).pop()}
-                      size="small"
-                      variant="outlined"
-                      sx={{
-                        fontFamily: "monospace",
-                        fontSize: "0.75rem",
-                        mt: 0.5,
-                      }}
-                    />
-                  ))}
-                </Stack>
-              )}
-            </ListItem>
-          );
-        })}
-        {isBotThinking && <ThinkingIndicator />}
-        <div ref={messagesEndRef} />
+                      <Paper
+                        elevation={3}
+                        sx={{
+                          p: "10px 15px",
+                          borderRadius: isUser
+                            ? "20px 20px 5px 20px"
+                            : "20px 20px 20px 5px",
+                          backgroundColor: isUser
+                            ? "primary.main"
+                            : "background.paper",
+                          color: isUser
+                            ? "primary.contrastText"
+                            : "text.primary",
+                          maxWidth: paperMaxWidth,
+                          wordBreak: "break-word",
+                          ...markdownStyles,
+                        }}
+                      >
+                        {shouldAnimateTyping ? (
+                          <AssistantMessage
+                            text={msg.text}
+                            onCharacterTyped={() => scrollToBottom("smooth")}
+                            onTypingComplete={onAnimationComplete}
+                          />
+                        ) : (
+                          <ReactMarkdown>{msg.text}</ReactMarkdown>
+                        )}
+                      </Paper>
+
+                      {isUser && (
+                        <Avatar
+                          src={userAvatar}
+                          sx={{
+                            width: avatarWidth,
+                            height: avatarWidth,
+                            flexShrink: 0,
+                          }}
+                        />
+                      )}
+                    </Box>
+
+                    {msg.attachments && msg.attachments.length > 0 && (
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        useFlexGap
+                        flexWrap="wrap"
+                        sx={{
+                          pl: !isUser ? `${avatarWidth + gap}px` : undefined,
+                          pr: isUser ? `${avatarWidth + gap}px` : undefined,
+                          maxWidth: paperMaxWidth,
+                          mt: 0.5,
+                          width: "auto",
+                        }}
+                      >
+                        {msg.attachments.map((att) => (
+                          <Chip
+                            key={att.id}
+                            icon={
+                              <InsertDriveFileOutlinedIcon fontSize="small" />
+                            }
+                            label={att.file_name || "attachment"}
+                            size="small"
+                            variant="outlined"
+                            component="a"
+                            href={att.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            clickable
+                            sx={{
+                              fontFamily: "monospace",
+                              fontSize: "0.75rem",
+                              mt: 0.5,
+                            }}
+                          />
+                        ))}
+                      </Stack>
+                    )}
+
+                    {msg.role === "assistant" &&
+                      uniqueContextFiles.length > 0 && (
+                        <Stack
+                          direction="row"
+                          spacing={0.5}
+                          useFlexGap
+                          flexWrap="wrap"
+                          sx={{
+                            pl: !isUser ? `${avatarWidth + gap}px` : undefined,
+                            pr: isUser ? `${avatarWidth + gap}px` : undefined,
+                            maxWidth: paperMaxWidth,
+                            mt: 0.5,
+                            width: "auto",
+                          }}
+                        >
+                          {uniqueContextFiles.map((fileName, idx) => (
+                            <Chip
+                              key={`${msg.id}-ctx-${idx}`}
+                              icon={
+                                <InsertDriveFileOutlinedIcon fontSize="small" />
+                              }
+                              label={fileName.split(/[/\\]/).pop()}
+                              size="small"
+                              variant="outlined"
+                              sx={{
+                                fontFamily: "monospace",
+                                fontSize: "0.75rem",
+                                mt: 0.5,
+                              }}
+                            />
+                          ))}
+                        </Stack>
+                      )}
+                  </ListItem>
+                </motion.div>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+        <AnimatePresence>
+          {isBotThinking && (
+            <motion.div layout>
+              <ThinkingIndicator />
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <div ref={scrollRef} />
       </List>
     </Box>
   );

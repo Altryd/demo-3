@@ -21,6 +21,9 @@ class User(Base):
     __tablename__ = "user"
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False)
+    google_display_name = Column(String(100), nullable=True)
+    google_email = Column(String(100), nullable=True, index=True)
+    google_picture_url = Column(String(255), nullable=True)
     chats = relationship("Chat", back_populates="user")
     is_deleted = Column(Boolean, default=False, nullable=False)
     speed_results = relationship("SpeedTestResult", back_populates="user")

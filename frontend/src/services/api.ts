@@ -14,7 +14,6 @@ export interface Chat {
   created_at: string;
 }
 
-// --- НОВАЯ МОДЕЛЬ: Для данных, отправляемых на бэкенд ---
 export interface AttachmentCreate {
   url: string;
   file_name?: string;
@@ -22,7 +21,6 @@ export interface AttachmentCreate {
   file_size?: number;
 }
 
-// --- НОВАЯ МОДЕЛЬ: Для данных, получаемых с бэкенда ---
 export interface AttachmentGet {
   id: number;
   url: string;
@@ -37,7 +35,6 @@ export interface Message {
   text: string;
   role: "user" | "assistant";
   context?: string[];
-  // --- ИЗМЕНЕНИЕ: Сообщение теперь может содержать вложения ---
   attachments?: AttachmentGet[];
 }
 
@@ -86,6 +83,17 @@ export interface SpeedTestPayload {
   chart_data: SpeedTestChartData[];
 }
 
+export interface GoogleCalendar {
+  id: string;
+  summary: string;
+  accessRole: string;
+}
+
+export interface SelectCalendarPayload {
+  user_id: number;
+  calendar_id: string;
+}
+
 export const getUsers = (): Promise<User[]> =>
   axios.get(`${API_BASE}/users`).then((res) => res.data);
 
@@ -114,7 +122,6 @@ export const createChat = (
     .then((res) => res.data);
 };
 
-// --- НОВАЯ ФУНКЦИЯ: Для загрузки файлов на сервер ---
 export const uploadFiles = (
   files: File[],
   signal: AbortSignal
@@ -138,7 +145,6 @@ export const postQuery = (
   question: string,
   userId: number,
   chatId: number,
-  // --- ИЗМЕНЕНИЕ: Добавлен параметр для вложений ---
   attachments: AttachmentCreate[] | null,
   signal: AbortSignal
 ): Promise<QueryResponse> => {
@@ -147,7 +153,6 @@ export const postQuery = (
     language: null,
     user_id: userId,
     chat_id: chatId,
-    // --- ИЗМЕНЕНИЕ: Включаем вложения в тело запроса ---
     attachments: attachments,
   };
 
@@ -165,6 +170,22 @@ export const postQuery = (
 export const deleteChat = (chatId: number): Promise<void> => {
   return axios.delete(`${API_BASE}/chat/${chatId}`);
 };
+
+export const listUserCalendars = (
+  userId: number,
+  signal: AbortSignal
+): Promise<{ calendars: GoogleCalendar[] }> =>
+  axios
+    .get(`${API_BASE}/calendars?user_id=${userId}`, { signal })
+    .then((res) => res.data);
+
+export const selectUserCalendar = (
+  payload: SelectCalendarPayload,
+  signal: AbortSignal
+): Promise<{ message: string }> =>
+  axios
+    .post(`${API_BASE}/select_calendar`, payload, { signal })
+    .then((res) => res.data);
 
 export const saveSpeedTestResult = (
   payload: SpeedTestPayload,

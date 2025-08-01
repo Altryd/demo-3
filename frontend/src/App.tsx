@@ -1,11 +1,10 @@
 import React, { useState } from "react";
 import { ThemeProvider } from "@mui/material/styles";
-// ИЗМЕНЕНИЕ: Используем HashRouter вместо BrowserRouter
 import { HashRouter, Routes, Route, useLocation } from "react-router-dom";
 import { CssBaseline } from "@mui/material";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Transition } from "framer-motion";
-
+import { GoogleAuthProvider } from "./contexts/GoogleAuthContext";
 import MainLayout from "./layouts/MainLayout";
 import SpeedPage from "./pages/SpeedPage";
 import { themes } from "./themes";
@@ -101,22 +100,24 @@ function App() {
 
   return (
     <ThemeProvider theme={themes[themeName]}>
-      <CssBaseline />
-      <GlobalScrollbar />
-      {isAnimatedBgEnabled && <AnimatedBackground />}
-      {}
-      <HashRouter>
-        <AppRoutes
-          themeName={themeName}
-          onThemeChange={handleThemeChange}
-          isAnimatedBgEnabled={isAnimatedBgEnabled}
-          onToggleAnimatedBg={setAnimatedBgEnabled}
-          selectedChatId={selectedChatId}
-          onSelectChat={setSelectedChatId}
-          currentUserId={currentUserId}
-          onSelectUser={handleSelectUser}
-        />
-      </HashRouter>
+      <GoogleAuthProvider currentUserId={currentUserId}>
+        <CssBaseline />
+        <GlobalScrollbar />
+        {isAnimatedBgEnabled && <AnimatedBackground />}
+        {}
+        <HashRouter>
+          <AppRoutes
+            themeName={themeName}
+            onThemeChange={handleThemeChange}
+            isAnimatedBgEnabled={isAnimatedBgEnabled}
+            onToggleAnimatedBg={setAnimatedBgEnabled}
+            selectedChatId={selectedChatId}
+            onSelectChat={setSelectedChatId}
+            currentUserId={currentUserId}
+            onSelectUser={handleSelectUser}
+          />
+        </HashRouter>
+      </GoogleAuthProvider>
     </ThemeProvider>
   );
 }

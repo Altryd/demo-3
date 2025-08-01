@@ -21,28 +21,27 @@ import SendIcon from "@mui/icons-material/Send";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import LinkIcon from "@mui/icons-material/Link";
-//import CloseIcon from "@mui/icons-material/Close";
 import { animate } from "animejs";
 
-// --- НОВЫЙ ТИП: Определяем, что такое вложение на фронтенде ---
 export interface AttachmentFile {
-  id: string; // Уникальный ID для ключа в React
-  file?: File; // Для локальных файлов
-  url?: string; // Для ссылок
-  preview?: string; // Для превью изображений
+  id: string;
+  file?: File;
+  url?: string;
+  preview?: string;
 }
 
 interface MessageInputProps {
-  chatId: number | null;
-  // --- ИЗМЕНЕНИЕ: onSendMessage теперь принимает массив вложений ---
-  onSendMessage: (text: string, attachments: AttachmentFile[]) => void;
+  onSendMessage: (text: string) => void;
   disabled?: boolean;
+  attachments: AttachmentFile[];
+  onAttachmentsChange: (attachments: AttachmentFile[]) => void;
 }
 
 const MessageInput: React.FC<MessageInputProps> = ({
-  chatId,
   onSendMessage,
   disabled,
+  attachments,
+  onAttachmentsChange,
 }) => {
   const [value, setValue] = useState("");
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -52,10 +51,6 @@ const MessageInput: React.FC<MessageInputProps> = ({
   const [urlDialogOpen, setUrlDialogOpen] = useState(false);
   const [urlValue, setUrlValue] = useState("");
 
-  // --- ИЗМЕНЕНИЕ: Храним массив вложений ---
-  const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
-
-  // Очищаем URL превью при размонтировании
   useEffect(() => {
     return () => {
       attachments.forEach((att) => {
@@ -66,26 +61,16 @@ const MessageInput: React.FC<MessageInputProps> = ({
     };
   }, [attachments]);
 
-  // --- ИЗМЕНЕНИЕ: Функция для очистки всех вложений ---
-  const removeAllAttachments = useCallback(() => {
-    setAttachments([]);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }, []);
-
-  // --- ИЗМЕНЕНИЕ: Функция для удаления одного вложения по ID ---
   const removeAttachment = (idToRemove: string) => {
-    setAttachments((prev) => prev.filter((att) => att.id !== idToRemove));
+    onAttachmentsChange(attachments.filter((att) => att.id !== idToRemove));
   };
 
-  // Сбрасываем состояние при смене чата или при отключении
   useEffect(() => {
     if (!disabled) {
       setValue("");
-      removeAllAttachments();
+      // Родитель теперь отвечает за очистку вложений
     }
-  }, [chatId, disabled, removeAllAttachments]);
+  }, [disabled]);
 
   const handleAttachmentClick = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -95,7 +80,6 @@ const MessageInput: React.FC<MessageInputProps> = ({
     setAnchorEl(null);
   };
 
-  // --- ИЗМЕНЕНИЕ: Обработка выбора нескольких файлов ---
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {
@@ -108,10 +92,9 @@ const MessageInput: React.FC<MessageInputProps> = ({
             : undefined,
         })
       );
-      setAttachments((prev) => [...prev, ...newAttachments]);
+      onAttachmentsChange([...attachments, ...newAttachments]);
     }
     handleAttachmentClose();
-    // Сбрасываем значение инпута, чтобы можно было выбрать тот же файл снова
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -123,7 +106,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
         id: `url-${Date.now()}`,
         url: urlValue.trim(),
       };
-      setAttachments((prev) => [...prev, newAttachment]);
+      onAttachmentsChange([...attachments, newAttachment]);
     }
     setUrlDialogOpen(false);
     setUrlValue("");
@@ -132,9 +115,9 @@ const MessageInput: React.FC<MessageInputProps> = ({
 
   const handleSend = () => {
     if ((value.trim() || attachments.length > 0) && !disabled) {
-      onSendMessage(value.trim(), attachments);
+      onSendMessage(value.trim());
       setValue("");
-      removeAllAttachments();
+      // Родитель очистит вложения
     }
   };
 
@@ -163,7 +146,6 @@ const MessageInput: React.FC<MessageInputProps> = ({
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-      {/* --- ИЗМЕНЕНИЕ: Отображение списка вложений --- */}
       {hasAttachments && (
         <Paper
           variant="outlined"
@@ -204,7 +186,6 @@ const MessageInput: React.FC<MessageInputProps> = ({
           top: "13px",
         }}
       >
-        {/* --- ИЗМЕНЕНИЕ: Добавлен атрибут multiple --- */}
         <input
           type="file"
           ref={fileInputRef}
