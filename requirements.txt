@@ -1,5 +1,6 @@
 beautifulsoup4
 easyocr
+docx2txt
 fastapi
 Flask
 flask_sqlalchemy
@@ -16,6 +17,7 @@ pytest-asyncio
 pydantic
 pymongo
 PyPDF2
+pypdf
 python-dotenv
 redis
 Requests

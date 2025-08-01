@@ -1,4 +1,7 @@
 import os
+from typing import List
+
+import aiohttp
 import requests
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
@@ -174,15 +177,6 @@ Is the retrieved context relevant to the user's new question?""")
 
             answer = await llm_interface.agenerate(question_for_llm, chat_history, user_id=query.user_id,
                                                    context=[], language="")
-
-        chat = db.query(Chat).filter(
-            Chat.id == query.chat_id,
-            Chat.user_id == query.user_id,
-            Chat.is_deleted.is_(False)
-        ).first()
-        if not chat:
-            if not query.attachments:
-                 raise HTTPException(status_code=404, detail="Chat not found or does not belong to user")
 
         user_message = Message(chat_id=query.chat_id, text=query.question, role="user", is_deleted=False)
         db.add(user_message)
