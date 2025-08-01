@@ -36,3 +36,5 @@ datasets
 matplotlib
 mistralai
 hf_xet
+"unstructured[docx,pdf]"
+rank_bm25 

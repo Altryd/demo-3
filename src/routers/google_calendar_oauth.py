@@ -8,7 +8,7 @@ from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import Flow
 from datetime import datetime
 import os.path
-from src.backend.database import get_db, UserCalendar
+from src.backend.database import get_db, UserCalendar, User
 from src.backend.models import SelectCalendarRequest
 from src.utlis.logging_config import get_logger
 from src.config.config import Config
@@ -69,7 +69,22 @@ async def google_auth_callback(code: str, state: str, db: Session = Depends(get_
     try:
         flow.fetch_token(code=code)
         credentials = flow.credentials
+        
+        # Запрашиваем информацию о пользователе у Google
+        user_info_service = build('oauth2', 'v2', credentials=credentials)
+        user_info = user_info_service.userinfo().get().execute()
 
+        google_name = user_info.get('name')
+        google_email = user_info.get('email')
+        google_picture = user_info.get('picture')
+
+        # Находим нашего пользователя и обновляем его данные
+        db_user = db.query(User).filter(User.id == user_id).first()
+        if db_user:
+            db_user.google_display_name = google_name
+            db_user.google_email = google_email
+            db_user.google_picture_url = google_picture
+            
         user_calendar = db.query(UserCalendar).filter(
             UserCalendar.user_id == user_id,
             UserCalendar.is_active == True
@@ -90,11 +105,11 @@ async def google_auth_callback(code: str, state: str, db: Session = Depends(get_
             )
             db.add(user_calendar)
         db.commit()
-        return RedirectResponse(url=f"{Config.FRONTEND_ADDRESS}/callback?status=success&user_id={user_id}")
+        return RedirectResponse(url=f"{Config.FRONTEND_ADDRESS}/#/callback?status=success&user_id={user_id}")
     except Exception as e:
         db.rollback()
         logger.error(f"Error in OAuth callback: {e}")
-        return RedirectResponse(url=f"{Config.FRONTEND_ADDRESS}/callback?status=error&error={str(e)}")
+        return RedirectResponse(url=f"{Config.FRONTEND_ADDRESS}/#/callback?status=error&error={str(e)}")
 
 
 @router.get("/calendars")
@@ -102,11 +117,15 @@ async def list_user_calendars(user_id: int, db: Session = Depends(get_db)):
     """
     List available Google Calendars for the user.
     """
+    
+    logger.info(f"--- START: list_user_calendars for user_id={user_id} ---")
+    
     user_calendar = db.query(UserCalendar).filter(
         UserCalendar.user_id == user_id,
         UserCalendar.is_active == True
     ).first()
     if not user_calendar:
+        logger.error(f"--- ABORT: No calendar credentials found for user_id={user_id} ---")
         raise HTTPException(status_code=404, detail="No calendar credentials found for user")
 
     credentials = Credentials(
@@ -126,11 +145,42 @@ async def list_user_calendars(user_id: int, db: Session = Depends(get_db)):
         logger.info(f"Tokens updated for user_id={user_id}")
     service = build('calendar', 'v3', credentials=credentials)
     try:
-        calendar_list = service.calendarList().list().execute()
+        logger.info(f"--- API CALL: Calling Google Calendar API with showHidden=True for user_id={user_id} ---")
+        
+        calendar_list = service.calendarList().list(showHidden=True, minAccessRole='reader').execute()
+        
         calendars = [
-            {"id": cal["id"], "summary": cal.get("summary", "Unnamed Calendar")}
+            {
+                "id": cal["id"], 
+                "summary": cal.get("summary", "Unnamed Calendar"),
+                "accessRole": cal.get("accessRole")
+            }
             for cal in calendar_list.get("items", [])
         ]
+        
+        db_user = db.query(User).filter(User.id == user_id).first()
+        user_email = db_user.google_email if db_user else None
+
+        birthdays_calendar_id = "addressbook#contacts@group.v.calendar.google.com"
+        
+        if not any(c['id'] == birthdays_calendar_id for c in calendars):
+            calendars.append({
+                "id": birthdays_calendar_id, 
+                "summary": "Birthdays", 
+                "accessRole": "reader"
+            })
+            logger.info(f"Manually added 'Birthdays' calendar for user_id={user_id}")
+
+        if user_email and not any(c['id'] == user_email for c in calendars):
+            calendars.append({
+                "id": user_email, 
+                "summary": "Tasks", 
+                "accessRole": "reader"
+            })
+            logger.info(f"Manually added 'Tasks' calendar for user_id={user_id}")
+        
+        logger.info(f"--- SUCCESS: Found {len(calendars)} calendars for user_id={user_id}. Summaries: {[c['summary'] for c in calendars]} ---")
+        
         return {"calendars": calendars}
     except Exception as e:
         logger.error(f"Error listing calendars for user_id={user_id}: {e}")
@@ -140,7 +190,7 @@ async def list_user_calendars(user_id: int, db: Session = Depends(get_db)):
 @router.post("/select_calendar")
 async def select_calendar(request: SelectCalendarRequest, db: Session = Depends(get_db)):
     """
-    Select a specific calendar for the user.
+    Selects a specific calendar for the user after verifying write access.
     """
     user_calendar = db.query(UserCalendar).filter(
         UserCalendar.user_id == request.user_id,
@@ -149,6 +199,40 @@ async def select_calendar(request: SelectCalendarRequest, db: Session = Depends(
     if not user_calendar:
         raise HTTPException(status_code=404, detail="No calendar credentials found for user")
 
-    user_calendar.calendar_id = request.calendar_id
-    db.commit()
-    return {"message": f"Calendar {request.calendar_id} selected for user {request.user_id}"}
+    credentials = Credentials(
+        token=user_calendar.access_token,
+        refresh_token=user_calendar.refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=Config.GOOGLE_CLIENT_ID,
+        client_secret=Config.GOOGLE_CLIENT_SECRET,
+        scopes=Config.SCOPES
+    )
+    if credentials.expired and credentials.refresh_token:
+        credentials.refresh(Request())
+        user_calendar.access_token = credentials.token
+        user_calendar.token_expiry = credentials.expiry.isoformat() if credentials.expiry else None
+
+    service = build('calendar', 'v3', credentials=credentials)
+
+    try:
+        calendar_metadata = service.calendarList().get(calendarId=request.calendar_id).execute()
+        access_role = calendar_metadata.get('accessRole')
+
+        if access_role not in ['writer', 'owner']:
+            logger.warning(f"User {request.user_id} attempted to select calendar {request.calendar_id} with insufficient role: {access_role}")
+            raise HTTPException(
+                status_code=403,
+                detail=f"You have '{access_role}' access to this calendar. Write permissions are required to set it as active."
+            )
+
+        user_calendar.calendar_id = request.calendar_id
+        db.commit()
+        logger.info(f"Calendar {request.calendar_id} successfully selected for user {request.user_id}")
+        return {"message": f"Calendar {request.calendar_id} selected for user {request.user_id}"}
+
+    except Exception as e:
+        db.rollback()
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Error selecting calendar for user {request.user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"An error occurred while selecting the calendar: {str(e)}")

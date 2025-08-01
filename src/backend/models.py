@@ -1,25 +1,30 @@
-from pydantic import BaseModel
+# START OF FILE src/backend/models.py
+
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from src.backend.database import Role
 
 
 class UserGet(BaseModel):
+    # Используем новый синтаксис и объединяем все поля в одной модели
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     name: str
-
-    class Config:
-        from_attributes = True
+    google_display_name: Optional[str] = None
+    google_email: Optional[str] = None
+    google_picture_url: Optional[str] = None
 
 
 class ChatGet(BaseModel):
+    # Оставляем только новый синтаксис, удаляем старый class Config
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     user_id: int
     summary: Optional[str] = None
     created_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
 
 
 class AttachmentCreate(BaseModel):
@@ -30,27 +35,26 @@ class AttachmentCreate(BaseModel):
 
 
 class AttachmentGet(BaseModel):
+    # Заменяем старый синтаксис на новый
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     url: str
     file_name: Optional[str] = None
     file_type: Optional[str] = None
     file_size: Optional[int] = None
 
-    class Config:
-        from_attributes = True
-
 
 class MessageGet(BaseModel):
+    # Заменяем старый синтаксис на новый
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     chat_id: int
     text: str
     role: Role
     attachments: List[AttachmentGet] = []
-    # --- поле для контекста ---
     context: Optional[List[str]] = None
-
-    class Config:
-        from_attributes = True
 
 
 class ChatPost(BaseModel):
@@ -105,6 +109,9 @@ class SpeedTestPayload(BaseModel):
 
 
 class SpeedTestResultGet(BaseModel):
+    # Заменяем старый синтаксис на новый
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     user_id: int
     taps: int
@@ -114,12 +121,10 @@ class SpeedTestResultGet(BaseModel):
     chart_data: Optional[List[SpeedTestChartData]] = None
     timestamp: str
 
-    class Config:
-        from_attributes = True
         
 class SelectCalendarRequest(BaseModel):
+    # Заменяем старый синтаксис на новый
+    model_config = ConfigDict(from_attributes=True)
+
     user_id: int
     calendar_id: str
-
-    class Config:
-        from_attributes = True

@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Box, IconButton, Button, useTheme } from "@mui/material";
 import { KeyboardArrowLeft, KeyboardArrowRight } from "@mui/icons-material";
 import { Link } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, type Variants } from "framer-motion";
 import ChatList from "../components/ChatList";
-import GoogleAuthButton from "../components/google/GoogleAuthButton";
 import ChatView from "../components/ChatView";
 import Welcome from "../components/Welcome";
 import MessageInput, { type AttachmentFile } from "../components/MessageInput";
@@ -23,6 +22,9 @@ import type {
   AttachmentGet,
 } from "../services/api";
 import type { ThemeName } from "../themes";
+
+import DragAndDropOverlay from "../components/DragAndDropOverlay";
+
 
 const logThinking = (
   action: "SET" | "RESET",
@@ -66,10 +68,19 @@ const MainLayout: React.FC<MainLayoutProps> = ({
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
 
+  const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const dragCounter = useRef(0);
+
   const [, _setThinkingChatIdInternal] = useState<number | null>(null);
   const thinkingChatIdRef = useRef<number | null>(null);
 
   const isFetchingRef = useRef(false);
+  const isNewChatFlow = useRef(false);
+
+  const [messageIdToAnimate, setMessageIdToAnimate] = useState<number | null>(
+    null
+  );
 
   const setThinkingChatId = (newId: number | null, reason: string) => {
     logThinking(
@@ -88,6 +99,63 @@ const MainLayout: React.FC<MainLayoutProps> = ({
   const isWelcomeLayout = selectedChatId === null;
 
   useEffect(() => {
+    const handleDragEnter = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounter.current++;
+      if (e.dataTransfer?.items && e.dataTransfer.items.length > 0) {
+        setIsDraggingOver(true);
+      }
+    };
+
+    const handleDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounter.current--;
+      if (dragCounter.current === 0) {
+        setIsDraggingOver(false);
+      }
+    };
+
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDraggingOver(false);
+      dragCounter.current = 0;
+
+      if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+        const files = Array.from(e.dataTransfer.files);
+        const newAttachments: AttachmentFile[] = files.map((file) => ({
+          id: `${file.name}-${file.lastModified}`,
+          file: file,
+          preview: file.type.startsWith("image/")
+            ? URL.createObjectURL(file)
+            : undefined,
+        }));
+        setAttachments((prev) => [...prev, ...newAttachments]);
+        e.dataTransfer.clearData();
+      }
+    };
+
+    window.addEventListener("dragenter", handleDragEnter);
+    window.addEventListener("dragleave", handleDragLeave);
+    window.addEventListener("dragover", handleDragOver);
+    window.addEventListener("drop", handleDrop);
+
+    return () => {
+      window.removeEventListener("dragenter", handleDragEnter);
+      window.removeEventListener("dragleave", handleDragLeave);
+      window.removeEventListener("dragover", handleDragOver);
+      window.removeEventListener("drop", handleDrop);
+    };
+  }, []);
+
+  useEffect(() => {
     if (currentUserId) {
       getUserChatsById(currentUserId)
         .then(setUserChats)
@@ -104,8 +172,15 @@ const MainLayout: React.FC<MainLayoutProps> = ({
   }, [currentUserId]);
 
   useEffect(() => {
+    if (isNewChatFlow.current) {
+      return;
+    }
+
     const controller = new AbortController();
     const chatIdToLoad = selectedChatId;
+    queryAbortControllerRef.current?.abort();
+
+    setMessageIdToAnimate(null);
 
     if (chatIdToLoad !== null && !isFetchingRef.current) {
       setLoadingMessages(true);
@@ -133,10 +208,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({
       setMessages([]);
       setLoadingMessages(false);
     }
-
-    return () => {
-      controller.abort();
-    };
   }, [selectedChatId]);
 
   const handleChatDeleted = (deletedChatId: number) => {
@@ -148,10 +219,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({
     }
   };
 
-  const handleSendMessage = async (
-    text: string,
-    attachments: AttachmentFile[]
-  ) => {
+  const handleAnimationComplete = () => {
+    setMessageIdToAnimate(null);
+  };
+
+  const handleSendMessage = async (text: string) => {
     queryAbortControllerRef.current?.abort();
     const controller = new AbortController();
     queryAbortControllerRef.current = controller;
@@ -159,12 +231,36 @@ const MainLayout: React.FC<MainLayoutProps> = ({
     let currentChatId = selectedChatId;
     const isNewChat = currentChatId === null;
 
+    const optimisticAttachments: AttachmentGet[] = attachments.map(
+      (att, index) => ({
+        id: Date.now() + index,
+        url: att.preview || att.url || "#",
+        file_name: att.file?.name || att.url?.split("/").pop() || "attachment",
+        file_type: att.file?.type || "url",
+        file_size: att.file?.size,
+      })
+    );
+
+    const optimisticChatId = currentChatId ?? Date.now();
+
+    const userMessage: Message = {
+      id: Date.now(),
+      chat_id: optimisticChatId,
+      text,
+      role: "user",
+      attachments: optimisticAttachments,
+    };
+
+    setMessages((prevMessages) => [...prevMessages, userMessage]);
+    setAttachments([]); // Очищаем вложения после оптимистичного рендера
+
+    setThinkingChatId(
+      isNewChat ? -1 : currentChatId,
+      `handleSendMessage start`
+    );
+
     try {
       isFetchingRef.current = true;
-      setThinkingChatId(
-        isNewChat ? -1 : currentChatId,
-        `handleSendMessage start`
-      );
 
       let attachmentPayload: AttachmentCreate[] | null = null;
       if (attachments.length > 0) {
@@ -185,17 +281,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({
         attachmentPayload = [...uploadedFileData, ...urlAttachments];
       }
 
-      const optimisticAttachments: AttachmentGet[] = (
-        attachmentPayload || []
-      ).map((att, index) => ({
-        id: Date.now() + index,
-        url: att.url,
-        file_name: att.file_name,
-        file_type: att.file_type,
-        file_size: att.file_size,
-      }));
-
       if (isNewChat) {
+        isNewChatFlow.current = true;
         const newChat = await createChat(
           currentUserId,
           text,
@@ -219,15 +306,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({
         );
       }
 
-      const userMessage: Message = {
-        id: Date.now(),
-        chat_id: currentChatId,
-        text,
-        role: "user",
-        attachments: optimisticAttachments,
-      };
-      setMessages((prevMessages) => [...prevMessages, userMessage]);
-
       const response = await postQuery(
         text,
         currentUserId,
@@ -249,7 +327,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({
         role: "assistant",
         context: sourceFileNames.length > 0 ? sourceFileNames : undefined,
       };
-      setMessages((prevMessages) => [...prevMessages, assistantMessage]);
+      setMessageIdToAnimate(assistantMessage.id);
+      setMessages((prevMessages) => [
+        ...prevMessages.filter((m) => m.id !== userMessage.id),
+        userMessage, // Можно обновить userMessage, если бэкенд возвращает его ID
+        assistantMessage,
+      ]);
 
       if (
         isNewChat ||
@@ -294,6 +377,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({
       if (!controller.signal.aborted) {
         setThinkingChatId(null, `handleSendMessage finally`);
         isFetchingRef.current = false;
+        isNewChatFlow.current = false;
       }
     }
   };
@@ -302,10 +386,18 @@ const MainLayout: React.FC<MainLayoutProps> = ({
     return thinkingChatIdRef.current !== null;
   };
 
-  const pageVariants = {
-    initial: { opacity: 0 },
-    animate: { opacity: 1 },
-    exit: { opacity: 0 },
+  const pageVariants: Variants = {
+    initial: { opacity: 0, x: 50 },
+    animate: {
+      opacity: 1,
+      x: 0,
+      transition: { duration: 0.3, ease: "easeInOut" },
+    },
+    exit: {
+      opacity: 0,
+      x: -50,
+      transition: { duration: 0.3, ease: "easeInOut" },
+    },
   };
 
   return (
@@ -319,6 +411,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({
           : "background.default",
       }}
     >
+      <AnimatePresence>
+        {isDraggingOver && <DragAndDropOverlay />}
+      </AnimatePresence>
+
       {isAnimatedBgEnabled && <AnimatedBackground />}
       <motion.aside
         initial={false}
@@ -338,8 +434,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({
           zIndex: 1,
         }}
       >
-        <GoogleAuthButton
-         currentUserId={currentUserId}/>
         <ChatList
           chats={userChats}
           selectedChatId={selectedChatId}
@@ -349,6 +443,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({
             setThinkingChatId(null, "onNewChat");
             onSelectChat(null);
             setMessages([]);
+            setMessageIdToAnimate(null);
+            setAttachments([]); // Очищаем вложения при создании нового чата
           }}
           currentUserId={currentUserId}
           onSelectUser={onSelectUser}
@@ -368,6 +464,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({
           flexDirection: "column",
           zIndex: 1,
           position: "relative",
+          overflow: "hidden",
         }}
       >
         <IconButton
@@ -385,122 +482,140 @@ const MainLayout: React.FC<MainLayoutProps> = ({
           {isSidebarOpen ? <KeyboardArrowLeft /> : <KeyboardArrowRight />}
         </IconButton>
 
-        <AnimatePresence mode="wait">
-          {isWelcomeLayout ? (
-            <motion.div
-              key="welcome"
-              variants={pageVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "center",
-                alignItems: "center",
-                height: "100%",
-                gap: "35px",
-              }}
-            >
-              <Box
-                sx={{
+        <Box
+          sx={{
+            position: "relative",
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <AnimatePresence mode="wait">
+            {isWelcomeLayout ? (
+              <motion.div
+                key="welcome"
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                style={{
+                  position: "absolute",
+                  width: "100%",
+                  height: "100%",
                   display: "flex",
                   flexDirection: "column",
-                  alignItems: "center",
-                  gap: 0,
-                  width: "100%",
-                  maxWidth: "900px",
-                  px: 2,
-                }}
-              >
-                <Welcome />
-                <Box sx={{ width: "100%" }}>
-                  <MessageInput
-                    chatId={selectedChatId}
-                    onSendMessage={handleSendMessage}
-                    disabled={isMessageInputDisabled()}
-                  />
-                </Box>
-              </Box>
-              <Box
-                sx={{
-                  display: "flex",
                   justifyContent: "center",
+                  alignItems: "center",
+                  gap: "35px",
                 }}
               >
-                <Button
-                  component={Link}
-                  to="/speed"
-                  variant="contained"
+                <Box
                   sx={{
-                    borderRadius: "16px",
-                    textTransform: "none",
-                    fontWeight: "bold",
-                    backgroundColor: "rgba(126, 87, 194, 0.2)",
-                    color: "primary.main",
-                    "&:hover": {
-                      backgroundColor: "rgba(126, 87, 194, 0.3)",
-                    },
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 0,
+                    width: "100%",
+                    maxWidth: "900px",
+                    px: 2,
                   }}
                 >
-                  osu!speed
-                </Button>
-              </Box>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="chat"
-              variants={pageVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                height: "100%",
-              }}
-            >
-              <Box
-                ref={scrollContainerRef}
-                sx={{ flexGrow: 1, overflowY: "auto" }}
-              >
-                <Box sx={{ maxWidth: "900px", width: "100%", mx: "auto" }}>
-                  <ChatView
-                    messages={messages}
-                    loading={loadingMessages}
-                    isBotThinking={thinkingChatIdRef.current !== null}
-                  />
+                  <Welcome />
+                  <Box sx={{ width: "100%" }}>
+                    <MessageInput
+                      onSendMessage={handleSendMessage}
+                      disabled={isMessageInputDisabled()}
+                      attachments={attachments}
+                      onAttachmentsChange={setAttachments}
+                    />
+                  </Box>
                 </Box>
-              </Box>
-              <Box
-                sx={{
-                  flexShrink: 0,
-                  px: 2,
-                  pt: 1,
-                  pb: 4,
-                  bgcolor: isAnimatedBgEnabled
-                    ? theme.palette.mode === "dark"
-                      ? "rgba(30, 30, 30, 0.7)"
-                      : "rgba(255, 255, 255, 0.7)"
-                    : "background.default",
-                  backdropFilter: isAnimatedBgEnabled ? "blur(8px)" : "none",
-                  transition: theme.transitions.create([
-                    "background-color",
-                    "backdrop-filter",
-                  ]),
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Button
+                    component={Link}
+                    to="/speed"
+                    variant="contained"
+                    sx={{
+                      borderRadius: "16px",
+                      textTransform: "none",
+                      fontWeight: "bold",
+                      backgroundColor: "rgba(126, 87, 194, 0.2)",
+                      color: "primary.main",
+                      "&:hover": {
+                        backgroundColor: "rgba(126, 87, 194, 0.3)",
+                      },
+                    }}
+                  >
+                    osu!speed
+                  </Button>
+                </Box>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="chat"
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                style={{
+                  position: "absolute",
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
                 }}
               >
-                <Box sx={{ maxWidth: "900px", mx: "auto" }}>
-                  <MessageInput
-                    chatId={selectedChatId}
-                    onSendMessage={handleSendMessage}
-                    disabled={isMessageInputDisabled()}
-                  />
+                <Box
+                  ref={scrollContainerRef}
+                  sx={{ flexGrow: 1, overflowY: "auto" }}
+                >
+                  <Box sx={{ maxWidth: "900px", width: "100%", mx: "auto" }}>
+                    <ChatView
+                      messages={messages}
+                      loading={loadingMessages}
+                      isBotThinking={thinkingChatIdRef.current !== null}
+                      messageIdToAnimate={messageIdToAnimate}
+                      onAnimationComplete={handleAnimationComplete}
+                      isAnimationEnabled={isAnimatedBgEnabled}
+                    />
+                  </Box>
                 </Box>
-              </Box>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                <Box
+                  sx={{
+                    flexShrink: 0,
+                    px: 2,
+                    pt: 1,
+                    pb: 4,
+                    bgcolor: isAnimatedBgEnabled
+                      ? theme.palette.mode === "dark"
+                        ? "rgba(30, 30, 30, 0.7)"
+                        : "rgba(255, 255, 255, 0.7)"
+                      : "background.default",
+                    backdropFilter: isAnimatedBgEnabled ? "blur(8px)" : "none",
+                    transition: theme.transitions.create([
+                      "background-color",
+                      "backdrop-filter",
+                    ]),
+                  }}
+                >
+                  <Box sx={{ maxWidth: "900px", mx: "auto" }}>
+                    <MessageInput
+                      onSendMessage={handleSendMessage}
+                      disabled={isMessageInputDisabled()}
+                      attachments={attachments}
+                      onAttachmentsChange={setAttachments}
+                    />
+                  </Box>
+                </Box>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </Box>
       </Box>
     </Box>
   );

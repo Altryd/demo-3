@@ -29,10 +29,14 @@ import {
   Wallpaper,
   Palette,
   DeleteOutline,
+  CalendarMonth,
 } from "@mui/icons-material";
 import { getUsers, deleteChat } from "../services/api";
 import type { Chat, User } from "../services/api";
 import type { ThemeName } from "../themes";
+import GoogleAuthButton from "./google/GoogleAuthButton";
+// Импортируем хук для доступа к данным Google-авторизации
+import { useGoogleAuth } from "../contexts/GoogleAuthContext";
 
 interface ChatListProps {
   chats: Chat[];
@@ -52,6 +56,14 @@ const themeDisplayNames: Record<ThemeName, string> = {
   "default-dark": "Стандартная темная",
   light: "Светлая",
   luto: "Luto",
+};
+
+const listItemTextStyles = {
+  style: {
+    whiteSpace: "nowrap", // Запретить перенос текста
+    overflow: "hidden", // Скрыть то, что не помещается
+    textOverflow: "ellipsis", // Добавить многоточие в конце
+  },
 };
 
 const groupChatsByDate = (chats: Chat[]): Record<string, Chat[]> => {
@@ -123,6 +135,20 @@ const ChatList: React.FC<ChatListProps> = ({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [chatToDelete, setChatToDelete] = useState<Chat | null>(null);
 
+  const {
+    isGoogledIn,
+    calendars,
+    selectedCalendarId,
+    loadingCalendars,
+    selectCalendar,
+  } = useGoogleAuth();
+  const [isCalendarListOpen, setCalendarListOpen] = useState(false);
+
+  // Фильтруем календари, оставляя только те, куда можно писать
+  const writableCalendars = calendars.filter(
+    (cal) => cal.accessRole === "writer" || cal.accessRole === "owner"
+  );
+
   const sortedChats = [...chats].sort((a, b) => {
     const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
     const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
@@ -154,6 +180,10 @@ const ChatList: React.FC<ChatListProps> = ({
   const handleThemeSelect = (name: ThemeName) => {
     onThemeChange(name);
     setSettingsOpen(false);
+  };
+
+  const handleCalendarSelect = (calendarId: string) => {
+    selectCalendar(calendarId);
   };
 
   const handleOpenDeleteDialog = (event: React.MouseEvent, chat: Chat) => {
@@ -191,7 +221,6 @@ const ChatList: React.FC<ChatListProps> = ({
         flexDirection: "column",
       }}
     >
-      {/* --- НЕПРОКРУЧИВАЕМАЯ ЧАСТЬ --- */}
       <Box sx={{ p: 2, flexShrink: 0 }}>
         <Box
           sx={{
@@ -257,6 +286,7 @@ const ChatList: React.FC<ChatListProps> = ({
                   >
                     <ListItemText
                       primary={themeDisplayNames[key as ThemeName]}
+                      primaryTypographyProps={listItemTextStyles} // добавление пропса для лимитов текста + норм иконки
                     />
                     {themeName === key && (
                       <ListItemIcon>
@@ -287,7 +317,10 @@ const ChatList: React.FC<ChatListProps> = ({
                       sx={{ pl: 4 }}
                       onClick={() => handleUserSelect(user.id)}
                     >
-                      <ListItemText primary={user.name} />
+                      <ListItemText
+                        primary={user.name}
+                        primaryTypographyProps={listItemTextStyles} // добавление пропса для ников и норм иконки
+                      />
                       {currentUserId === user.id && (
                         <ListItemIcon>
                           <CheckCircle fontSize="small" color="success" />
@@ -298,6 +331,63 @@ const ChatList: React.FC<ChatListProps> = ({
                 )}
               </List>
             </Collapse>
+            {/* --- НАЧАЛО ИЗМЕНЕНИЙ --- */}
+            {isGoogledIn && (
+              <>
+                <Divider />
+                <ListItemButton
+                  onClick={() => setCalendarListOpen(!isCalendarListOpen)}
+                >
+                  <ListItemIcon sx={{ minWidth: 40 }}>
+                    <CalendarMonth />
+                  </ListItemIcon>
+                  <ListItemText primary="Календари" />
+                </ListItemButton>
+                <Collapse in={isCalendarListOpen} timeout="auto" unmountOnExit>
+                  <List component="div" disablePadding dense>
+                    {loadingCalendars ? (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "center",
+                          p: 2,
+                        }}
+                      >
+                        <CircularProgress size={24} />
+                      </Box>
+                    ) : writableCalendars.length > 0 ? (
+                      writableCalendars.map((calendar) => (
+                        <ListItemButton
+                          key={calendar.id}
+                          sx={{ pl: 4 }}
+                          onClick={() => handleCalendarSelect(calendar.id)}
+                        >
+                          <ListItemText
+                            primary={calendar.summary}
+                            primaryTypographyProps={listItemTextStyles}
+                          />
+                          {selectedCalendarId === calendar.id && (
+                            <ListItemIcon>
+                              <CheckCircle fontSize="small" color="success" />
+                            </ListItemIcon>
+                          )}
+                        </ListItemButton>
+                      ))
+                    ) : (
+                      <ListItem sx={{ pl: 4 }}>
+                        <ListItemText
+                          primary="Нет календарей для записи"
+                          primaryTypographyProps={{
+                            color: "text.secondary",
+                            fontStyle: "italic",
+                          }}
+                        />
+                      </ListItem>
+                    )}
+                  </List>
+                </Collapse>
+              </>
+            )}
           </List>
         </Paper>
       </Collapse>
@@ -321,9 +411,11 @@ const ChatList: React.FC<ChatListProps> = ({
             primaryTypographyProps={{ style: { whiteSpace: "nowrap" } }}
           />
         </ListItemButton>
-        <Divider sx={{ mt: 1 }} />
+        <Box sx={{ mt: 1 }}>
+          <GoogleAuthButton currentUserId={currentUserId} />
+        </Box>
+        <Divider sx={{ mt: 2 }} />
       </Box>
-      {/* --- ПРОКРУЧИВАЕМАЯ ЧАСТЬ --- */}
       <Box sx={{ flexGrow: 1, overflowY: "auto", px: 2 }}>
         <List>
           {groupOrder.map(
