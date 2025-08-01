@@ -10,13 +10,17 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 
-# src/routers/user.py
+
+
 @router.get("/user/{user_id}", response_model=UserGet)
 def get_user_by_id(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
+    user = db.query(User).filter(
+        User.id == user_id,
+        User.is_deleted == False).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
 
 @router.get("/users")
 def get_all_users(db: Session = Depends(get_db)) -> List[UserGet]:

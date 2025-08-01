@@ -32,9 +32,11 @@ faiss-cpu
 langdetect
 pytest
 transformers
+torch
 datasets
 matplotlib
 mistralai
 hf_xet
-"unstructured[docx,pdf]"
+pg8000
+unstructured[docx,pdf]
 rank_bm25 
