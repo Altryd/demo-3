@@ -215,7 +215,9 @@ class LLMInterface:
         prompt_template = ChatPromptTemplate.from_messages([
             ("system", "You are a helpful assistant. "
                        "Answer the user's question based ONLY on the following context:"
-                       "\n\n--- CONTEXT ---\n{context}\n--- END CONTEXT ---"),
+                       "\n\n--- CONTEXT ---\n{context}\n--- END CONTEXT ---"
+                       "Next you will see (or maybe you won't see) the chat history, but DO NOT rely on it too much! "
+                       "Focus on context"),
             MessagesPlaceholder(variable_name="history"),
             ("user", "{question}")
         ])

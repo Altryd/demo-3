@@ -27,6 +27,7 @@ class User(Base):
     chats = relationship("Chat", back_populates="user")
     is_deleted = Column(Boolean, default=False, nullable=False)
     speed_results = relationship("SpeedTestResult", back_populates="user")
+    calendars = relationship("UserCalendar", back_populates="user")
 
 
 class Chat(Base):
@@ -133,7 +134,7 @@ class UserCalendar(Base):
                          ondelete="CASCADE"
                      ),
                      nullable=False, index=True)
-    # user = relationship("User", back_populates="calendars")
+    user = relationship("User", back_populates="calendars")
     calendar_id = Column(String, nullable=False)
     access_token = Column(String, nullable=False)
     refresh_token = Column(String, nullable=True)

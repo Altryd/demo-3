@@ -93,12 +93,12 @@ class RAGService:
                 f"Starting to process document '{file_path}' for chat_id {chat_id}.")
 
             file_extension = os.path.splitext(file_path)[1].lower()
-            if file_extension not in [".pdf", ".docx"]:
+            if file_extension not in [".txt", ".pdf", ".docx"]:  # TODO
                 logger.warning(
                     f"Unsupported file type for RAG: {file_path}. Skipping.")
                 return []
 
-            loader = UnstructuredFileLoader(file_path)
+            loader = UnstructuredFileLoader(file_path, encoding="utf-8")
             documents = loader.load()
 
             new_chunks = self.text_splitter.split_documents(documents)
@@ -211,3 +211,37 @@ class RAGService:
         except Exception as e:
             logger.error(f"Failed to query index for chat {chat_id}: {e}")
             return []
+
+    def get_document_chunks(self, question: str, chat_id: int, file_name: str) -> list:
+        index_path = self._get_index_path(chat_id)
+        chunks_path = self._get_chunks_path(chat_id)
+
+        if not os.path.exists(index_path) or not os.path.exists(chunks_path):
+            logger.info(
+                f"Index or chunks file not found for chat {chat_id}. Returning empty context.")
+            return []
+        with open(chunks_path, "rb") as f:
+            all_chunks = pickle.load(f)
+
+        # фильтруем чанки по имени файла
+        focused_chunks = [chunk for chunk in all_chunks if
+                          os.path.basename(chunk.metadata.get('source', '')) == file_name]
+
+        # создаем временный FAISS-индекс только для скинутого файла
+        temp_vector_store = FAISS.from_documents(focused_chunks, self.embedding_model)
+        temp_retriever = temp_vector_store.as_retriever(search_kwargs={"k": 4})
+
+        retrieved_docs = temp_retriever.invoke(question)
+        logger.info(f"Retrieved {len(retrieved_docs)} documents from {file_name}.")
+
+        if retrieved_docs:  # TODO: maybe BM25
+            doc_pairs = [(question, doc.page_content) for doc in retrieved_docs]
+            scores = self.reranker.score(doc_pairs)
+            doc_scores = list(zip(retrieved_docs, scores))
+            sorted_doc_scores = sorted(doc_scores, key=lambda x: x[1], reverse=True)
+            reranked_docs = [doc for doc, score in sorted_doc_scores[:3]]
+            return reranked_docs
+
+        return retrieved_docs
+
+        return []

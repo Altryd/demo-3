@@ -10,7 +10,7 @@ class Config:
     GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
     SCOPES = [
         'https://www.googleapis.com/auth/calendar',
-        'https://www.googleapis.com/auth/tasks.readonly',
+        # 'https://www.googleapis.com/auth/tasks.readonly',
         'openid',  # Стандарт для аутентификации
         'https://www.googleapis.com/auth/userinfo.email',  # Доступ к email
         'https://www.googleapis.com/auth/userinfo.profile'  # Доступ к имени и аватару

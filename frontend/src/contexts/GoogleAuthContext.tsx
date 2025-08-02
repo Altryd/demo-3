@@ -18,6 +18,7 @@ interface GoogleUser {
   google_display_name: string | null;
   google_email: string | null;
   google_picture_url: string | null;
+  authorised_google: boolean | null;
 }
 
 interface AuthContextType {
@@ -43,6 +44,8 @@ export const GoogleAuthProvider: React.FC<GoogleAuthProviderProps> = ({
   children,
   currentUserId, // Получаем ID текущего пользователя
 }) => {
+    // console.log(currentUserId);
+    // localStorage.setItem("google_authed_user_id", currentUserId);
   const [googleUser, setGoogleUser] = useState<GoogleUser | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -80,8 +83,12 @@ export const GoogleAuthProvider: React.FC<GoogleAuthProviderProps> = ({
         setSelectedCalendarId(calendarId);
         localStorage.setItem(`selected_calendar_${googleUser.id}`, calendarId);
       } catch (error) {
-        console.error("Ошибка при выборе календаря:", error);
-        alert("Не удалось сохранить выбор календаря. Попробуйте снова.");
+          if (error.status === 401) {
+              logout();
+          } else {
+                console.error("Ошибка при выборе календаря:", error);
+                alert("Не удалось сохранить выбор календаря. Попробуйте снова.");
+            }
       }
     },
     [googleUser]
@@ -95,7 +102,7 @@ export const GoogleAuthProvider: React.FC<GoogleAuthProviderProps> = ({
           `http://localhost:8000/user/${userId}`
         );
 
-        if (response.data && response.data.google_email) {
+        if (response.data && response.data.authorised_google) {
           setGoogleUser(response.data);
           localStorage.setItem("google_authed_user_id", String(userId));
 
@@ -119,6 +126,8 @@ export const GoogleAuthProvider: React.FC<GoogleAuthProviderProps> = ({
             .catch((err) => {
               console.error("Не удалось загрузить календари", err);
               setCalendars([]);
+              logout();
+              // clearGoogleSessionView();
             })
             .finally(() => {
               setLoadingCalendars(false);
@@ -154,7 +163,9 @@ export const GoogleAuthProvider: React.FC<GoogleAuthProviderProps> = ({
     if (googledInUserIdStr) {
       const googledInUserId = parseInt(googledInUserIdStr, 10);
       if (currentUserId !== googledInUserId) {
-        clearGoogleSessionView();
+        // clearGoogleSessionView();
+        logout();
+        login(currentUserId);
       } else {
         if (!googleUser) {
           login(currentUserId);

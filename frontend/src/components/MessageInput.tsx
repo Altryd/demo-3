@@ -192,7 +192,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
           onChange={handleFileSelect}
           hidden
           multiple
-          accept="image/*,application/pdf,.doc,.docx"
+          accept="image/*,application/pdf,.doc,.docx,.txt"
         />
         <IconButton
           onClick={handleAttachmentClick}

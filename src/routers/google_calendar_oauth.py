@@ -1,3 +1,4 @@
+from google.auth.exceptions import RefreshError
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from fastapi import Depends, APIRouter, HTTPException
@@ -39,7 +40,8 @@ async def start_google_auth(user_id: int, db: Session = Depends(get_db)):
     flow.redirect_uri = Config.REDIRECT_URI
     authorization_url, state = flow.authorization_url(
         access_type="offline",
-        include_granted_scopes="true",
+        prompt="consent",
+        include_granted_scopes="false",
         state=str(user_id)  # Передаём user_id через state
     )
     return {"authorization_url": authorization_url}
@@ -85,14 +87,15 @@ async def google_auth_callback(
             db_user.google_picture_url = google_picture
 
         user_calendar = db.query(UserCalendar).filter(
-            UserCalendar.user_id == user_id,
-            UserCalendar.is_active == True
+            UserCalendar.user_id == user_id  # ,
+            # UserCalendar.is_active == True
         ).first()
         if user_calendar:
             user_calendar.access_token = credentials.token
             user_calendar.refresh_token = credentials.refresh_token
             user_calendar.token_expiry = credentials.expiry.isoformat(
             ) if credentials.expiry else None
+            user_calendar.is_active = True
         else:
             # Сохраняем токены в базе данных
             user_calendar = UserCalendar(
@@ -140,7 +143,7 @@ async def list_user_calendars(user_id: int, db: Session = Depends(get_db)):
         client_secret=Config.GOOGLE_CLIENT_SECRET,
         scopes=Config.SCOPES
     )
-    if credentials.expired and credentials.refresh_token:
+    if credentials.expired  and credentials.refresh_token:
         logger.info(
             f"Access token expired for user_id={user_id}, refreshing...")
         credentials.refresh(Request())
@@ -192,6 +195,15 @@ async def list_user_calendars(user_id: int, db: Session = Depends(get_db)):
             f"--- SUCCESS: Found {len(calendars)} calendars for user_id={user_id}. Summaries: {[c['summary'] for c in calendars]} ---")
 
         return {"calendars": calendars}
+    except RefreshError as e:
+        db.rollback()
+        user_calendar.is_active = False
+        db.commit()
+        logger.error(
+            f"Error selecting calendar for user because RefreshError  {user_id}: {e}")
+        raise HTTPException(
+            status_code=401,
+            detail=f"An error occurred while selecting the calendar RefreshError: {str(e)}")
     except Exception as e:
         logger.error(f"Error listing calendars for user_id={user_id}: {e}")
         raise HTTPException(status_code=400,
@@ -247,7 +259,15 @@ async def select_calendar(request: SelectCalendarRequest,
             f"Calendar {request.calendar_id} successfully selected for user {request.user_id}")
         return {
             "message": f"Calendar {request.calendar_id} selected for user {request.user_id}"}
-
+    except RefreshError as e:
+        db.rollback()
+        user_calendar.is_active = False
+        db.commit()
+        logger.error(
+            f"Error selecting calendar for user because RefreshError  {request.user_id}: {e}")
+        raise HTTPException(
+            status_code=401,
+            detail=f"An error occurred while selecting the calendar RefreshError: {str(e)}")
     except Exception as e:
         db.rollback()
         if isinstance(e, HTTPException):

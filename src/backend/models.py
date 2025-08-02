@@ -15,6 +15,7 @@ class UserGet(BaseModel):
     google_display_name: Optional[str] = None
     google_email: Optional[str] = None
     google_picture_url: Optional[str] = None
+    authorised_google: Optional[bool] = False
 
 
 class ChatGet(BaseModel):

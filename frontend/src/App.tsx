@@ -90,7 +90,10 @@ function App() {
   const [currentUserId, setCurrentUserId] = useState<number>(1);
 
   const handleSelectUser = (userId: number) => {
-    setCurrentUserId(userId);
+    if (currentUserId !== userId) {
+        setCurrentUserId(userId);
+        localStorage.setItem("google_authed_user_id", null);
+    }
     setSelectedChatId(null);
   };
 

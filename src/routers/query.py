@@ -50,8 +50,9 @@ async def process_query(query: Query, db: Session = Depends(get_db)):
                 Message.is_deleted.is_(False),
                 Message.chat_id == query.chat_id)).order_by(Message.id).all()
 
-        newly_indexed_docs = []
+        highly_relevant_docs = []
         attachment_prompts = []
+        no_attachment_prompt = "\n[System note: The user has not attached any new files]"
         if query.attachments:
             for attachment in query.attachments:
                 file_type = attachment.file_type or ''
@@ -66,78 +67,90 @@ async def process_query(query: Query, db: Session = Depends(get_db)):
                         f"\n[User has attached an image named '{file_name}'. Analyze it using its URL: {file_url}]")
                     attachment_prompts.append(prompt)
 
-                elif file_type in ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]:
+                elif file_type in ["application/pdf",
+                                   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                   'text/plain'] or 'text/' in file_type:
 
                     # --- ИЗМЕНЕНИЕ: Проверка на существование документа в индексе ---
                     is_already_processed = rag_service.is_document_in_index(
                         query.chat_id, file_name)
-
+                    new_chunks = None
+                    relevant_chunks = None
                     if is_already_processed:
                         logger.info(
                             f"Document '{file_name}' is already indexed for this chat. Skipping download and processing.")
                         attachment_prompts.append(
                             f"\n[System note: The document '{file_name}' is already available in the knowledge base.]")
-                        continue  # Переходим к следующему вложению
+                        relevant_chunks = rag_service.get_document_chunks(question, query.chat_id, file_name)
+                        # continue
+                    else:
+                        file_path = os.path.join(DOWNLOADS_DIR, file_name)
+                        try:
+                            logger.info(
+                                f"Submitting POST request to {file_url} to trigger download.")
 
-                    file_path = os.path.join(DOWNLOADS_DIR, file_name)
-                    try:
-                        logger.info(
-                            f"Submitting POST request to {file_url} to trigger download.")
+                            with requests.post(file_url, stream=True, timeout=120) as r:
+                                r.raise_for_status()
+                                with open(file_path, 'wb') as f:
+                                    for chunk in r.iter_content(chunk_size=8192):
+                                        f.write(chunk)
 
-                        with requests.post(file_url, stream=True, timeout=120) as r:
-                            r.raise_for_status()
-                            with open(file_path, 'wb') as f:
-                                for chunk in r.iter_content(chunk_size=8192):
-                                    f.write(chunk)
+                            logger.info(
+                                f"Successfully saved document to {file_path}. Now indexing.")
+                            new_chunks = rag_service.add_document_to_index(
+                                file_path, query.chat_id)
 
-                        logger.info(
-                            f"Successfully saved document to {file_path}. Now indexing.")
-                        new_chunks = rag_service.add_document_to_index(
-                            file_path, query.chat_id)
 
-                        if new_chunks:
-                            newly_indexed_docs.extend(new_chunks)
+                        except requests.RequestException as e:
+                            logger.error(
+                                f"Failed to download document {file_name}: {e}")
                             attachment_prompts.append(
-                                f"\n[System note: The document '{file_name}' has been successfully indexed and its content is available for answering questions.]")
-                        else:
+                                f"\n[System note: Failed to download attached document '{file_name}'.]")
+                        except Exception as e:
+                            logger.error(
+                                f"An unexpected error occurred during file processing for {file_name}: {e}")
                             attachment_prompts.append(
-                                f"\n[System note: Failed to process the attached document '{file_name}'. Please inform the user about the error.]")
+                                f"\n[System note: An error occurred while processing '{file_name}'.]")
 
-                    except requests.RequestException as e:
-                        logger.error(
-                            f"Failed to download document {file_name}: {e}")
+                    if new_chunks or relevant_chunks:
+                        highly_relevant_chunks = new_chunks if new_chunks else relevant_chunks
+                        highly_relevant_docs.extend(highly_relevant_chunks)
                         attachment_prompts.append(
-                            f"\n[System note: Failed to download attached document '{file_name}'.]")
-                    except Exception as e:
-                        logger.error(
-                            f"An unexpected error occurred during file processing for {file_name}: {e}")
+                            f"\n[System note: The document '{file_name}' is probably highly relevant and its content is available for answering questions.]")
+                    else:
                         attachment_prompts.append(
-                            f"\n[System note: An error occurred while processing '{file_name}'.]")
+                            f"\n[System note: Failed to process the attached document '{file_name}'. Please inform the user about the error.]")
 
                 else:
                     attachment_prompts.append(
                         f"\n[User has attached a file named '{file_name}'. URL: {file_url}]")
-
+        else:
+            attachment_prompts.append(no_attachment_prompt)
         final_context_docs = []
         formatted_history = "\n".join(
             [f"{msg.role}: {msg.text}" for msg in chat_history[-4:]])
 
-        if newly_indexed_docs:
+        if highly_relevant_docs:
             logger.info(
-                f"Using context from newly uploaded document ({len(newly_indexed_docs)} chunks).")
-            final_context_docs = newly_indexed_docs
+                f"Using context from HIGHLY (!) relevant document ({len(highly_relevant_docs)} chunks).")
+            final_context_docs = highly_relevant_docs
         else:
             logger.info("No new documents. Querying existing index.")
             search_query = query.question
             if chat_history:
                 rewrite_prompt = ChatPromptTemplate.from_messages([
-                    ("system", "Given a chat history and a follow up question, rephrase the follow up question to be a standalone question."),
+                    ("system", "Given a chat history and a follow up question, rephrase the follow up question to be a standalone question."), # Also give hints if user has attached some files"),
                     ("user",
                      "Chat History:\n{chat_history}\n\nFollow Up Input: {question}")
                 ])
                 llm_interface.llm = llm_interface.mistral_llm
                 rewriter_chain = rewrite_prompt | llm_interface.llm | StrOutputParser()
-                search_query = await rewriter_chain.ainvoke({"chat_history": formatted_history, "question": query.question})
+                question_for_rephrase = query.question
+                """
+                if attachment_prompts[-1] != no_attachment_prompt:
+                    question_for_rephrase = question_for_rephrase + f"  \nKeep in mind that: {attachment_prompts[-1]}"
+                """
+                search_query = await rewriter_chain.ainvoke({"chat_history": formatted_history, "question": question_for_rephrase})
                 logger.info(
                     f"Original question: '{query.question}' | Rewritten search query: '{search_query}'")
                 llm_interface.llm = backup_llm
@@ -148,10 +161,10 @@ async def process_query(query: Query, db: Session = Depends(get_db)):
             [doc.page_content for doc in final_context_docs])
 
         use_rag_context = False
-        if newly_indexed_docs and retrieved_context:
+        if highly_relevant_docs and retrieved_context:
             use_rag_context = True
             logger.info(
-                "New document indexed. Assuming first question is relevant, using RAG context directly.")
+                "Got highly relevant document. Assuming first question is relevant, using RAG context directly.")
         elif retrieved_context:
             logger.info(
                 "Found context from existing index. Checking for relevance...")
@@ -196,7 +209,7 @@ Is the retrieved context relevant to the user's new question?""")
             answer = await llm_interface.agenerate_response_from_context(
                 question=query.question,
                 context=retrieved_context,
-                history=chat_history
+                history=chat_history[-4:]  # TODO ?? but maybe this is good
             )
         else:
             logger.info(

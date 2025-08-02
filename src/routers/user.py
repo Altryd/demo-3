@@ -19,6 +19,11 @@ def get_user_by_id(user_id: int, db: Session = Depends(get_db)):
         User.is_deleted == False).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    user.authorised_google = False
+    for calendar in user.calendars:
+        if calendar.is_active:
+            user.authorised_google = True
+            return user
     return user
 
 
