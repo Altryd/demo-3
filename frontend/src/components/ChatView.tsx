@@ -4,6 +4,7 @@ import React, {
   useState,
   memo,
   useLayoutEffect,
+  type ComponentProps,
 } from "react";
 import {
   List,
@@ -14,15 +15,23 @@ import {
   Avatar,
   Chip,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
 } from "@mui/material";
 import {
   motion,
   AnimatePresence,
   type Transition,
-  type Variants,
+  //type Variants,
 } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import type { Message } from "../services/api";
+
+import remarkGfm from "remark-gfm";
 
 import userAvatar from "../assets/osu_asset_pfp.png";
 import botAvatar from "../assets/osu_asset_logo.png";
@@ -38,6 +47,57 @@ const markdownStyles = {
   "& ul, & ol": { paddingLeft: "20px", margin: "8px 0" },
   "& li": { marginBottom: "4px" },
   "& a": { color: "primary.main", textDecoration: "underline" },
+};
+
+// добавление таблиц
+const markdownComponents = {
+  table: (props: ComponentProps<"table">) => (
+    <TableContainer component={Paper} sx={{ my: 2, boxShadow: 3 }}>
+      <Table {...props} size="small" />
+    </TableContainer>
+  ),
+  thead: (props: ComponentProps<"thead">) => (
+    <TableHead
+      {...props}
+      sx={{
+        backgroundColor: (theme) =>
+          theme.palette.mode === "dark"
+            ? "rgba(255, 255, 255, 0.08)"
+            : "rgba(0, 0, 0, 0.04)",
+      }}
+    />
+  ),
+  tbody: (props: ComponentProps<"tbody">) => <TableBody {...props} />,
+  tr: (props: ComponentProps<"tr">) => (
+    <TableRow
+      {...props}
+      sx={{
+        "&:last-child td, &:last-child th": { border: 0 },
+      }}
+    />
+  ),
+  th: (props: ComponentProps<"th">) => {
+    const { align, ...rest } = props;
+    const muiCompatibleAlign = align === "char" ? undefined : align;
+    return (
+      <TableCell
+        {...rest}
+        align={muiCompatibleAlign}
+        sx={{ fontWeight: "bold", overflowWrap: "break-word" }}
+      />
+    );
+  },
+  td: (props: ComponentProps<"td">) => {
+    const { align, ...rest } = props;
+    const muiCompatibleAlign = align === "char" ? undefined : align;
+    return (
+      <TableCell
+        {...rest}
+        align={muiCompatibleAlign}
+        sx={{ overflowWrap: "break-word" }}
+      />
+    );
+  },
 };
 
 const ThinkingIndicator: React.FC = () => {
@@ -134,7 +194,11 @@ const AssistantMessage: React.FC<AssistantMessageProps> = ({
     }, 5);
     return () => clearInterval(interval);
   }, [text, onCharacterTyped, onTypingComplete]);
-  return <ReactMarkdown>{displayedText}</ReactMarkdown>;
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+      {displayedText}
+    </ReactMarkdown>
+  );
 };
 
 interface ChatViewProps {
@@ -290,7 +354,12 @@ const ChatView: React.FC<ChatViewProps> = ({
                             onTypingComplete={onAnimationComplete}
                           />
                         ) : (
-                          <ReactMarkdown>{msg.text}</ReactMarkdown>
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={markdownComponents}
+                          >
+                            {msg.text}
+                          </ReactMarkdown>
                         )}
                       </Paper>
 
